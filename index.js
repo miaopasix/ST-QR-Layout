@@ -14,9 +14,13 @@ const defaultSettings = {
     buttonFontSize: 'inherit',
     buttonPadding: '3px 5px',
     barMaxHeight: 'none',
+    buttonOrder: [],
+    buttonStyles: {},
 };
 
 const LAYOUT_FIELDS = ['enabled', 'layoutMode', 'columns', 'buttonMinWidth', 'buttonMaxWidth', 'buttonHeight', 'gap', 'buttonFontSize', 'buttonPadding', 'barMaxHeight'];
+
+let _confirmCallback = null;
 
 function loadSettings() {
     if (!extension_settings[EXTENSION_NAME]) {
@@ -25,6 +29,8 @@ function loadSettings() {
     const s = extension_settings[EXTENSION_NAME];
     if (!s.presets) s.presets = {};
     if (!s.currentPreset) s.currentPreset = '';
+    if (!s.buttonOrder) s.buttonOrder = [];
+    if (!s.buttonStyles) s.buttonStyles = {};
     return s;
 }
 
@@ -63,6 +69,62 @@ function applySettings() {
 function saveAndApply() {
     applySettings();
     saveSettingsDebounced();
+}
+
+function getButtonName(btn) {
+    return btn.title?.trim() || btn.textContent.trim() || '';
+}
+
+function applyButtonOrder() {
+    const s = loadSettings();
+    if (!s.buttonOrder || s.buttonOrder.length < 2) return;
+    const containers = new Map();
+    document.querySelectorAll('#qr--bar .qr--button').forEach(btn => {
+        const parent = btn.parentElement;
+        if (!containers.has(parent)) containers.set(parent, []);
+        containers.get(parent).push(btn);
+    });
+    containers.forEach((buttons, container) => {
+        if (buttons.length < 2) return;
+        buttons.sort((a, b) => {
+            const aIdx = s.buttonOrder.indexOf(getButtonName(a));
+            const bIdx = s.buttonOrder.indexOf(getButtonName(b));
+            if (aIdx === -1 && bIdx === -1) return 0;
+            if (aIdx === -1) return 1;
+            if (bIdx === -1) return -1;
+            return aIdx - bIdx;
+        });
+        buttons.forEach(btn => container.appendChild(btn));
+    });
+}
+
+function applyButtonStyles() {
+    const s = loadSettings();
+    if (!s.buttonStyles) return;
+    document.querySelectorAll('#qr--bar .qr--button').forEach(btn => {
+        const name = getButtonName(btn);
+        const st = s.buttonStyles[name];
+        if (st) {
+            if (st.color) btn.style.setProperty('color', st.color, 'important');
+            else btn.style.removeProperty('color');
+            if (st.strokeWidth > 0 && st.strokeColor) {
+                btn.style.setProperty('-webkit-text-stroke', `${st.strokeWidth}px ${st.strokeColor}`, 'important');
+            } else {
+                btn.style.removeProperty('-webkit-text-stroke');
+            }
+            if (st.bold) btn.style.setProperty('font-weight', 'bold', 'important');
+            else btn.style.removeProperty('font-weight');
+        } else {
+            btn.style.removeProperty('color');
+            btn.style.removeProperty('-webkit-text-stroke');
+            btn.style.removeProperty('font-weight');
+        }
+    });
+}
+
+function applyButtonCustomizations() {
+    applyButtonOrder();
+    applyButtonStyles();
 }
 
 function renderSettings() {
@@ -156,7 +218,7 @@ function createFloatingPanel() {
         <label>最小宽度: <input type="text" id="qrl-btn-min-width" class="text_pole" placeholder="例: unset"></label>
         <label>最大宽度: <input type="text" id="qrl-btn-max-width" class="text_pole" placeholder="例: unset"></label>
         <label>高度: <input type="text" id="qrl-btn-height" class="text_pole" placeholder="例: auto"></label>
-        <div class="qrl-desc">最小宽度：按钮不会小于此值<br>最大宽度：按钮不会大于此值<br>高度：按钮的固定高度<br>可填：<code>unset</code>（不限）、<code>50px</code>、<code>auto</code>（自动）、<code>100%</code>（撑满）</div>
+        <div class="qrl-desc">可填：<code>unset</code>（不限）、<code>50px</code>、<code>auto</code>（自动）、<code>100%</code>（撑满）</div>
 
         <hr>
 
@@ -180,10 +242,25 @@ function createFloatingPanel() {
         <div class="qrl-section-label">容器</div>
         <label>栏最大高度: <input type="text" id="qrl-bar-max-height" class="text_pole" placeholder="例: none"></label>
         <div class="qrl-desc">快捷回复栏最大高度，超出时滚动<br>填 <code>none</code>（不限）或 <code>200px</code></div>
+
+        <hr>
+
+        <div class="qrl-collapsible">
+            <div class="qrl-collapsible-header" id="qrl-color-toggle">
+                <span>颜色位置修改</span>
+                <span class="qrl-collapse-icon">▼</span>
+            </div>
+            <div class="qrl-collapsible-content" id="qrl-color-content">
+                <div class="qrl-desc">长按拖动按钮可互换位置<br>修改颜色/描边/加粗后即时生效</div>
+                <button class="qrl-refresh-btn" id="qrl-refresh-buttons">刷新按钮列表</button>
+                <div id="qrl-button-list"></div>
+            </div>
+        </div>
     </div>`;
     document.body.appendChild(panel);
     makeDraggable(panel);
     bindPanelEvents();
+    bindCollapsibleEvents();
     populatePresetDropdown();
     syncGridGroup();
     loadPanelValues();
@@ -277,6 +354,190 @@ function bindPanelEvents() {
         loadPreset(this.value);
     });
     $('qrl-reset-btn')?.addEventListener('click', showResetConfirm);
+    $('qrl-refresh-buttons')?.addEventListener('click', () => { refreshButtonList(); applyButtonCustomizations(); });
+}
+
+function bindCollapsibleEvents() {
+    const toggle = document.getElementById('qrl-color-toggle');
+    const content = document.getElementById('qrl-color-content');
+    if (!toggle || !content) return;
+    toggle.addEventListener('click', () => {
+        const isHidden = content.style.display === 'none' || !content.style.display;
+        content.style.display = isHidden ? 'block' : 'none';
+        toggle.querySelector('.qrl-collapse-icon').textContent = isHidden ? '▲' : '▼';
+        if (isHidden) refreshButtonList();
+    });
+}
+
+function refreshButtonList() {
+    const s = loadSettings();
+    const buttons = Array.from(document.querySelectorAll('#qr--bar .qr--button'));
+    const names = buttons.map(getButtonName).filter(n => n);
+    const unique = [...new Set(names)];
+    if (!s.buttonOrder || s.buttonOrder.length === 0) {
+        s.buttonOrder = unique.slice();
+    }
+    unique.forEach(n => {
+        if (!s.buttonOrder.includes(n)) s.buttonOrder.push(n);
+    });
+    s.buttonOrder = s.buttonOrder.filter(n => unique.includes(n));
+    if (!s.buttonStyles) s.buttonStyles = {};
+    renderButtonList();
+}
+
+function renderButtonList() {
+    const s = loadSettings();
+    const container = document.getElementById('qrl-button-list');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!s.buttonOrder || s.buttonOrder.length === 0) {
+        container.innerHTML = '<div class="qrl-desc">未检测到快捷回复按钮，请先添加按钮后点击刷新</div>';
+        return;
+    }
+    s.buttonOrder.forEach(name => {
+        const item = createButtonItem(name, s.buttonStyles[name] || {});
+        container.appendChild(item);
+    });
+    setupDragAndDrop(container);
+}
+
+function rgbToHex(rgb) {
+    if (!rgb || rgb === 'rgba(0, 0, 0, 0)') return '#ffffff';
+    const m = rgb.match(/(\d+)/g);
+    if (!m || m.length < 3) return '#ffffff';
+    return '#' + m.slice(0, 3).map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
+}
+
+function getButtonDefaultColor(name) {
+    const btn = Array.from(document.querySelectorAll('#qr--bar .qr--button'))
+        .find(b => getButtonName(b) === name);
+    if (btn) {
+        const c = getComputedStyle(btn).color;
+        return rgbToHex(c);
+    }
+    return '#ffffff';
+}
+
+function createButtonItem(name, style) {
+    const s = loadSettings();
+    const div = document.createElement('div');
+    div.className = 'qrl-btn-item';
+    div.dataset.name = name;
+    const defaultColor = style.color || getButtonDefaultColor(name);
+    div.innerHTML = `
+        <span class="qrl-drag-handle">☰</span>
+        <span class="qrl-btn-name" title="${name}">${name}</span>
+        <div class="qrl-btn-controls">
+            <span>字色</span><input type="color" class="qrl-clr-font" value="${defaultColor}">
+            <span>描边</span><input type="color" class="qrl-clr-stroke" value="${style.strokeColor || '#000000'}">
+            <span>宽</span><input type="number" class="qrl-stroke-w" min="0" max="5" value="${style.strokeWidth || 0}">px
+            <label><input type="checkbox" class="qrl-bold" ${style.bold ? 'checked' : ''}>粗</label>
+        </div>
+        <button class="qrl-clear-btn">清除</button>
+    `;
+
+    const fontInput = div.querySelector('.qrl-clr-font');
+    const strokeInput = div.querySelector('.qrl-clr-stroke');
+    const widthInput = div.querySelector('.qrl-stroke-w');
+    const boldInput = div.querySelector('.qrl-bold');
+    const clearBtn = div.querySelector('.qrl-clear-btn');
+
+    const updateStyle = () => {
+        if (!s.buttonStyles) s.buttonStyles = {};
+        s.buttonStyles[name] = {
+            color: fontInput.value,
+            strokeColor: strokeInput.value,
+            strokeWidth: Number(widthInput.value),
+            bold: boldInput.checked
+        };
+        applyButtonStyles();
+        saveSettingsDebounced();
+    };
+
+    fontInput.addEventListener('change', updateStyle);
+    strokeInput.addEventListener('change', updateStyle);
+    widthInput.addEventListener('change', updateStyle);
+    boldInput.addEventListener('change', updateStyle);
+
+    clearBtn.addEventListener('click', () => {
+        if (s.buttonStyles) delete s.buttonStyles[name];
+        applyButtonStyles();
+        saveSettingsDebounced();
+        renderButtonList();
+    });
+
+    return div;
+}
+
+function setupDragAndDrop(container) {
+    const items = Array.from(container.querySelectorAll('.qrl-btn-item'));
+    let dragSrc = null;
+    let pressTimer = null;
+
+    items.forEach(item => {
+        item.addEventListener('mousedown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'LABEL') return;
+            item.draggable = false;
+            pressTimer = setTimeout(() => {
+                item.draggable = true;
+            }, 400);
+        });
+
+        item.addEventListener('mouseup', () => {
+            clearTimeout(pressTimer);
+            setTimeout(() => { item.draggable = false; }, 50);
+        });
+
+        item.addEventListener('mouseleave', () => {
+            clearTimeout(pressTimer);
+        });
+
+        item.addEventListener('dragstart', (e) => {
+            dragSrc = item;
+            item.classList.add('qrl-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', item.dataset.name);
+        });
+
+        item.addEventListener('dragend', () => {
+            item.classList.remove('qrl-dragging');
+            item.draggable = false;
+        });
+
+        item.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (dragSrc && dragSrc !== item) {
+                item.classList.add('qrl-drag-over');
+            }
+        });
+
+        item.addEventListener('dragleave', () => {
+            item.classList.remove('qrl-drag-over');
+        });
+
+        item.addEventListener('drop', (e) => {
+            e.preventDefault();
+            item.classList.remove('qrl-drag-over');
+            if (dragSrc && dragSrc !== item) {
+                swapListItems(dragSrc, item);
+            }
+            dragSrc = null;
+        });
+    });
+}
+
+function swapListItems(itemA, itemB) {
+    const s = loadSettings();
+    const nameA = itemA.dataset.name;
+    const nameB = itemB.dataset.name;
+    const idxA = s.buttonOrder.indexOf(nameA);
+    const idxB = s.buttonOrder.indexOf(nameB);
+    if (idxA >= 0 && idxB >= 0) {
+        [s.buttonOrder[idxA], s.buttonOrder[idxB]] = [s.buttonOrder[idxB], s.buttonOrder[idxA]];
+    }
+    renderButtonList();
+    applyButtonOrder();
+    saveSettingsDebounced();
 }
 
 function loadPanelValues() {
@@ -343,13 +604,14 @@ function deletePreset() {
     const sel = document.getElementById('qrl-presets');
     if (!sel || !sel.value) return;
     const name = sel.value;
-    if (!confirm(`确定删除预设「${name}」？`)) return;
-    const s = loadSettings();
-    if (s.presets) delete s.presets[name];
-    if (s.currentPreset === name) s.currentPreset = '';
-    saveSettingsDebounced();
-    populatePresetDropdown();
-    document.getElementById('qrl-preset-name').value = '';
+    showConfirm(`确定删除预设「${name}」？`, '该操作不可撤销', () => {
+        const s = loadSettings();
+        if (s.presets) delete s.presets[name];
+        if (s.currentPreset === name) s.currentPreset = '';
+        saveSettingsDebounced();
+        populatePresetDropdown();
+        document.getElementById('qrl-preset-name').value = '';
+    }, '确定删除');
 }
 
 function addConfirmOverlay(panel) {
@@ -358,34 +620,50 @@ function addConfirmOverlay(panel) {
     overlay.style.display = 'none';
     overlay.innerHTML = `
     <div id="qrl-confirm-dialog">
-        <p><strong>确定重置所有设置？</strong></p>
-        <p style="font-size:11px;opacity:0.7">已保存的预设不会丢失</p>
+        <p><strong id="qrl-cfm-title">确定重置所有设置？</strong></p>
+        <p id="qrl-cfm-sub" style="font-size:11px;opacity:0.7">已保存的预设不会丢失</p>
         <div class="qrl-cfm-btns">
-            <button id="qrl-cfm-yes">确定重置</button>
+            <button id="qrl-cfm-yes">确定</button>
             <button id="qrl-cfm-no">取消</button>
         </div>
     </div>`;
     panel.appendChild(overlay);
     overlay.querySelector('#qrl-cfm-yes')?.addEventListener('click', () => {
         overlay.style.display = 'none';
-        doReset();
+        if (_confirmCallback) { _confirmCallback(); _confirmCallback = null; }
     });
     overlay.querySelector('#qrl-cfm-no')?.addEventListener('click', () => {
         overlay.style.display = 'none';
+        _confirmCallback = null;
     });
 }
 
-function showResetConfirm() {
+function showConfirm(title, subtitle, onYes, yesText) {
     const overlay = document.getElementById('qrl-confirm-overlay');
-    if (overlay) overlay.style.display = 'flex';
+    if (!overlay) return;
+    document.getElementById('qrl-cfm-title').textContent = title;
+    document.getElementById('qrl-cfm-sub').textContent = subtitle;
+    document.getElementById('qrl-cfm-yes').textContent = yesText || '确定';
+    _confirmCallback = onYes;
+    overlay.style.display = 'flex';
+}
+
+function showResetConfirm() {
+    showConfirm('确定重置所有设置？', '已保存的预设不会丢失', () => {
+        doReset();
+    }, '确定重置');
 }
 
 function doReset() {
     const s = loadSettings();
     applyLayoutToSettings(s, defaultSettings);
+    s.buttonOrder = [];
+    s.buttonStyles = {};
     loadPanelValues();
     syncGridGroup();
+    applyButtonCustomizations();
     saveAndApply();
+    renderButtonList();
 }
 
 jQuery(async () => {
@@ -393,6 +671,17 @@ jQuery(async () => {
     renderSettings();
     createFloatingPanel();
     applySettings();
-    eventSource.on(event_types.CHAT_CHANGED, () => setTimeout(applySettings, 300));
-    eventSource.on(event_types.SETTINGS_UPDATED, () => setTimeout(applySettings, 300));
+    applyButtonCustomizations();
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+        setTimeout(() => {
+            applySettings();
+            applyButtonCustomizations();
+        }, 300);
+    });
+    eventSource.on(event_types.SETTINGS_UPDATED, () => {
+        setTimeout(() => {
+            applySettings();
+            applyButtonCustomizations();
+        }, 300);
+    });
 });
