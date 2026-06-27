@@ -1,5 +1,5 @@
-import { eventSource, event_types, saveSettingsDebounced } from '../../../script.js';
-import { extension_settings } from '../../../extensions.js';
+import { eventSource, event_types, saveSettingsDebounced } from '/script.js';
+import { extension_settings } from '/scripts/extensions.js';
 
 const EXTENSION_NAME = 'qr-layout-customizer';
 
