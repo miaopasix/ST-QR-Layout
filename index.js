@@ -1,5 +1,5 @@
-import { eventSource, event_types, saveSettingsDebounced } from '../../../../script.js';
-import { extension_settings } from '../../../extensions.js';
+import { eventSource, event_types, saveSettingsDebounced } from '../../../script.js';
+import { extension_settings } from '../../extensions.js';
 
 const EXTENSION_NAME = 'qr-layout-customizer';
 
@@ -15,6 +15,9 @@ const defaultSettings = {
     buttonOrder: [],
     buttonStyles: {},
     buttonScriptMap: {},
+    foldedButtons: null,
+    foldEnabled: true,
+    foldGap: 2,
 };
 
 const LAYOUT_FIELDS = ['enabled', 'layoutMode', 'rows', 'buttonScale', 'marginY', 'marginX', 'buttonFontSize', 'barMaxHeight'];
@@ -31,6 +34,9 @@ function loadSettings() {
     if (!s.buttonOrder) s.buttonOrder = [];
     if (!s.buttonStyles) s.buttonStyles = {};
     if (!s.buttonScriptMap) s.buttonScriptMap = {};
+    if (s.foldedButtons === undefined) s.foldedButtons = null;
+    if (s.foldEnabled === undefined) s.foldEnabled = true;
+    if (s.foldGap === undefined) s.foldGap = 2;
     return s;
 }
 
@@ -57,7 +63,7 @@ function applySettings() {
         syncCustomButtons();
         
         if (s.layoutMode === 'grid') {
-            const buttons = document.querySelectorAll('#qrl-custom-buttons .qr--button');
+        const buttons = document.querySelectorAll('#qrl-custom-buttons .qr--button:not(.qrl-fold-btn)');
             const totalButtons = buttons.length;
             if (totalButtons > 0) {
                 const rows = Math.min(Math.max(1, s.rows), totalButtons);
@@ -135,9 +141,169 @@ function collectNewButtons() {
         }
     });
     
+    ensureFoldButton();
+    applyFoldState();
     applyButtonOrder();
     applyButtonStyles();
     applyGridCols();
+}
+
+let _foldButton = null;
+let _foldPopup = null;
+let _foldDocHandler = null;
+
+function ensureFoldButton() {
+    const container = document.getElementById('qrl-custom-buttons');
+    if (!container) return;
+    const s = loadSettings();
+    
+    if (!s.foldEnabled) {
+        if (_foldButton) { _foldButton.remove(); _foldButton = null; }
+        if (_foldPopup) { _foldPopup.remove(); _foldPopup = null; }
+        return;
+    }
+    
+    if (!_foldButton) {
+        _foldButton = document.createElement('div');
+        _foldButton.className = 'qr--button menu_button qrl-fold-btn';
+        _foldButton.innerHTML = '<div class="qr--button-icon fa-mosaic fa-solid fa-house"></div>';
+        _foldButton.title = '折叠按钮';
+        _foldButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleFoldPopup();
+        });
+    }
+    
+    if (!container.querySelector('.qrl-fold-btn')) {
+        container.appendChild(_foldButton);
+    }
+    
+    if (!_foldPopup) {
+        _foldPopup = document.createElement('div');
+        _foldPopup.id = 'qrl-fold-popup';
+        _foldPopup.className = 'qrl-fold-popup';
+        document.body.appendChild(_foldPopup);
+        
+        _foldDocHandler = null;
+    }
+}
+
+function toggleFoldPopup() {
+    if (!_foldPopup || !_foldButton) return;
+    if (_foldPopup.classList.contains('qrl-fold-visible')) {
+        closeFoldPopup();
+    } else {
+        openFoldPopup();
+    }
+}
+
+function openFoldPopup() {
+    if (!_foldPopup) return;
+    while (_foldPopup.firstChild) {
+        _foldPopup.removeChild(_foldPopup.firstChild);
+    }
+    const s = loadSettings();
+    const container = document.getElementById('qrl-custom-buttons');
+    if (container) {
+        const foldedBtns = Array.from(container.querySelectorAll('.qr--button:not(.qrl-fold-btn)'))
+            .filter(btn => s.foldedButtons && s.foldedButtons.includes(getButtonName(btn)));
+        foldedBtns.forEach(btn => {
+            const clone = btn.cloneNode(true);
+            clone.style.display = '';
+            clone.addEventListener('click', (e) => {
+                e.stopPropagation();
+                btn.click();
+                closeFoldPopup();
+            });
+            _foldPopup.appendChild(clone);
+        });
+    }
+    
+    _foldPopup.classList.add('qrl-fold-visible');
+    applyFoldGap();
+    requestAnimationFrame(() => {
+        const rect = _foldButton.getBoundingClientRect();
+        const container = document.getElementById('qrl-custom-buttons');
+        const containerRect = container ? container.getBoundingClientRect() : null;
+        const width = containerRect ? containerRect.width - 4 : window.innerWidth - 40;
+        _foldPopup.style.width = width + 'px';
+        _foldPopup.style.maxWidth = width + 'px';
+        _foldPopup.style.minWidth = '80px';
+        const popupRect = _foldPopup.getBoundingClientRect();
+        let left = containerRect ? containerRect.right - width : rect.right - width;
+        let top = rect.top - popupRect.height - 4;
+        if (top < 0) top = rect.bottom + 4;
+        _foldPopup.style.left = left + 'px';
+        _foldPopup.style.top = top + 'px';
+    });
+}
+
+function closeFoldPopup() {
+    if (!_foldPopup) return;
+    _foldPopup.classList.remove('qrl-fold-visible');
+    setTimeout(() => {
+        while (_foldPopup && _foldPopup.firstChild) {
+            _foldPopup.removeChild(_foldPopup.firstChild);
+        }
+    }, 150);
+}
+
+function applyFoldState() {
+    const s = loadSettings();
+    const container = document.getElementById('qrl-custom-buttons');
+    if (!container) return;
+    
+    if (s.foldedButtons === null) {
+        const allBtns = Array.from(container.querySelectorAll('.qr--button:not(.qrl-fold-btn)'));
+        s.foldedButtons = allBtns.map(getButtonName).filter(n => n);
+    }
+    
+    container.querySelectorAll('.qr--button:not(.qrl-fold-btn)').forEach(btn => {
+        const name = getButtonName(btn);
+        const shouldBeFolded = s.foldEnabled && s.foldedButtons && s.foldedButtons.includes(name);
+        btn.style.display = shouldBeFolded ? 'none' : '';
+    });
+    
+    if (_foldButton && s.foldEnabled) {
+        _foldButton.style.setProperty('transform', `scale(${s.buttonScale / 100 * 1.3})`, 'important');
+        _foldButton.style.setProperty('font-size', s.buttonFontSize, 'important');
+    }
+}
+
+function renderFoldList() {
+    const s = loadSettings();
+    const listContainer = document.getElementById('qrl-fold-list');
+    if (!listContainer) return;
+    listContainer.innerHTML = '';
+    
+    const allButtons = Array.from(document.querySelectorAll('#qrl-custom-buttons .qr--button:not(.qrl-fold-btn)'));
+    const allNames = allButtons.map(getButtonName).filter(n => n);
+    const uniqueNames = [...new Set(allNames)];
+    
+    if (uniqueNames.length === 0) {
+        listContainer.innerHTML = '<div class="qrl-desc">未检测到按钮，请先启用自定义布局</div>';
+        return;
+    }
+    
+    uniqueNames.forEach(name => {
+        const isFolded = s.foldedButtons && s.foldedButtons.includes(name);
+        const label = document.createElement('label');
+        label.className = 'checkbox_label qrl-fold-item';
+        label.innerHTML = `<input type="checkbox" ${isFolded ? 'checked' : ''}> <span>${name}</span>`;
+        const checkbox = label.querySelector('input');
+            checkbox.addEventListener('change', () => {
+            if (!s.foldedButtons) s.foldedButtons = [];
+            if (checkbox.checked && !s.foldedButtons.includes(name)) {
+                s.foldedButtons.push(name);
+            } else if (!checkbox.checked) {
+                s.foldedButtons = s.foldedButtons.filter(n => n !== name);
+            }
+            applyFoldState();
+            applyButtonStyles();
+            saveSettingsDebounced();
+        });
+        listContainer.appendChild(label);
+    });
 }
 
 function applyGridCols() {
@@ -161,8 +327,14 @@ function removeCustomContainer() {
     
     const customContainer = document.getElementById('qrl-custom-buttons');
     if (customContainer) {
+        customContainer.querySelectorAll('.qr--button').forEach(btn => {
+            btn.style.removeProperty('display');
+        });
         customContainer.remove();
     }
+    
+    if (_foldButton) { _foldButton.remove(); _foldButton = null; }
+    if (_foldPopup) { _foldPopup.remove(); _foldPopup = null; }
     
     const qrBar = document.getElementById('qr--bar');
     if (qrBar) qrBar.style.removeProperty('display');
@@ -187,7 +359,7 @@ function applyButtonOrder() {
     const container = document.getElementById('qrl-custom-buttons');
     if (!container) return;
     
-    const allButtons = Array.from(container.querySelectorAll('.qr--button'));
+    const allButtons = Array.from(container.querySelectorAll('.qr--button:not(.qrl-fold-btn)'));
     if (allButtons.length < 2) return;
     
     allButtons.sort((a, b) => {
@@ -199,33 +371,93 @@ function applyButtonOrder() {
         return aIdx - bIdx;
     });
     allButtons.forEach(btn => container.appendChild(btn));
+    
+    const foldBtn = container.querySelector('.qrl-fold-btn');
+    if (foldBtn) container.insertBefore(foldBtn, container.firstChild);
 }
 
 function applyButtonStyles() {
     const s = loadSettings();
     if (!s.enabled) return;
-    if (!s.buttonStyles) return;
     
     const container = document.getElementById('qrl-custom-buttons');
     if (!container) return;
     
     container.querySelectorAll('.qr--button').forEach(btn => {
+        if (btn.classList.contains('qrl-fold-btn')) return;
         const name = getButtonName(btn);
-        const st = s.buttonStyles[name];
+        const st = s.buttonStyles ? s.buttonStyles[name] : null;
+        if (st && st.fontSize && st.fontSize > 0) {
+            btn.style.setProperty('font-size', `${st.fontSize}px`, 'important');
+        } else if (s.buttonFontSize && s.buttonFontSize !== 'inherit') {
+            btn.style.setProperty('font-size', s.buttonFontSize, 'important');
+        } else {
+            btn.style.removeProperty('font-size');
+        }
+        if (st) {
+            if (st.color) btn.style.setProperty('color', st.color, 'important');
+            else btn.style.removeProperty('color');
+            if (st.bold) btn.style.setProperty('font-weight', 'bold', 'important');
+            else btn.style.removeProperty('font-weight');
+        } else {
+            btn.style.removeProperty('color');
+            btn.style.removeProperty('font-weight');
+        }
+    });
+    
+    if (_foldButton && s.foldEnabled) {
+        _foldButton.style.setProperty('transform', `scale(${s.buttonScale / 100 * 1.3})`, 'important');
+        _foldButton.style.setProperty('font-size', s.buttonFontSize, 'important');
+    }
+}
+
+function applySingleButtonStyle(name) {
+    const s = loadSettings();
+    if (!s.enabled) return;
+    const st = s.buttonStyles ? s.buttonStyles[name] : null;
+    const allBtns = document.querySelectorAll('#qrl-custom-buttons .qr--button');
+    allBtns.forEach(btn => {
+        if (getButtonName(btn) !== name) return;
         if (st) {
             if (st.color) btn.style.setProperty('color', st.color, 'important');
             else btn.style.removeProperty('color');
             if (st.fontSize && st.fontSize > 0) {
                 btn.style.setProperty('font-size', `${st.fontSize}px`, 'important');
+            } else if (s.buttonFontSize && s.buttonFontSize !== 'inherit') {
+                btn.style.setProperty('font-size', s.buttonFontSize, 'important');
             } else {
                 btn.style.removeProperty('font-size');
             }
             if (st.bold) btn.style.setProperty('font-weight', 'bold', 'important');
             else btn.style.removeProperty('font-weight');
+        }
+    });
+    refreshFoldPopupClones();
+}
+
+function refreshFoldPopupClones() {
+    if (!_foldPopup || !_foldPopup.classList.contains('qrl-fold-visible')) return;
+    const s = loadSettings();
+    const container = document.getElementById('qrl-custom-buttons');
+    if (!container) return;
+    const foldedBtns = Array.from(container.querySelectorAll('.qr--button:not(.qrl-fold-btn)'))
+        .filter(btn => s.foldedButtons && s.foldedButtons.includes(getButtonName(btn)));
+    Array.from(_foldPopup.children).forEach(child => {
+        const name = child.textContent || child.title || '';
+        const original = foldedBtns.find(b => getButtonName(b) === name);
+        if (!original) return;
+        const st = s.buttonStyles ? s.buttonStyles[name] : null;
+        if (st) {
+            if (st.color) child.style.color = st.color;
+            else child.style.color = '';
+            if (st.fontSize && st.fontSize > 0) child.style.fontSize = `${st.fontSize}px`;
+            else if (s.buttonFontSize && s.buttonFontSize !== 'inherit') child.style.fontSize = s.buttonFontSize;
+            else child.style.fontSize = '';
+            child.style.fontWeight = st.bold ? 'bold' : '';
         } else {
-            btn.style.removeProperty('color');
-            btn.style.removeProperty('font-size');
-            btn.style.removeProperty('font-weight');
+            child.style.color = '';
+            child.style.fontSize = '';
+            child.style.fontWeight = '';
         }
     });
 }
@@ -253,6 +485,9 @@ function fullReset() {
     s.buttonOrder = [];
     s.buttonStyles = {};
     s.buttonScriptMap = {};
+    s.foldedButtons = [];
+    s.foldEnabled = true;
+    s.foldGap = 2;
     applySettings();
     loadPanelValues();
     syncGridGroup();
@@ -306,14 +541,14 @@ function createFloatingPanel() {
     <div id="qrl-panel-header">
         <div class="qrl-hdr-row">
             <span class="qrl-label">当前预设:</span>
-            <select id="qrl-presets"><option value="">— 选择 —</option></select>
+            <select id="qrl-presets" class="qrl-input-quarter"><option value="">— 选择 —</option></select>
             <button class="qrl-hdr-btn" id="qrl-preset-save">保存</button>
             <div class="qrl-spacer"></div>
             <button class="qrl-hdr-btn qrl-close-btn" id="qrl-panel-close">✕</button>
         </div>
         <div class="qrl-hdr-row">
             <span class="qrl-label">预设名称:</span>
-            <input type="text" id="qrl-preset-name" class="text_pole" placeholder="输入名称">
+            <input type="text" id="qrl-preset-name" class="text_pole qrl-input-quarter" placeholder="输入名称">
             <button class="qrl-hdr-btn" id="qrl-preset-del">删除</button>
             <div class="qrl-spacer"></div>
             <button class="qrl-hdr-btn" id="qrl-reset-btn">重置</button>
@@ -332,7 +567,7 @@ function createFloatingPanel() {
         <div class="qrl-section-label">排列方式</div>
         <label>
             布局模式:
-            <select id="qrl-layout-mode" class="text_pole">
+            <select id="qrl-layout-mode" class="text_pole qrl-input-third">
                 <option value="grid">行数</option>
                 <option value="flex">弹性换行</option>
             </select>
@@ -375,15 +610,37 @@ function createFloatingPanel() {
 
         <hr>
 
-        <div class="qrl-section-label">文字</div>
-        <label>字体大小: <input type="text" id="qrl-btn-font-size" class="text_pole" placeholder="例: inherit"></label>
+        <label>整体文字大小: <input type="text" id="qrl-btn-font-size" class="text_pole qrl-input-sm" placeholder="例: inherit"></label>
         <div class="qrl-desc">如 <code>inherit</code>（跟随主题）、<code>12px</code>、<code>0.9em</code>（主题的90%）</div>
 
         <hr>
 
-        <div class="qrl-section-label">容器</div>
-        <label>栏最大高度: <input type="text" id="qrl-bar-max-height" class="text_pole" placeholder="例: none"></label>
-        <div class="qrl-desc">快捷回复栏最大高度，超出时滚动<br>填 <code>none</code>（不限）或 <code>200px</code></div>
+        <label>QR栏高度: <input type="text" id="qrl-bar-max-height" class="text_pole qrl-input-sm" placeholder="例: none"></label>
+        <div class="qrl-desc">超出时滚动，填 <code>none</code>（不限）或 <code>200px</code></div>
+
+        <hr>
+
+        <label class="checkbox_label">
+            <input type="checkbox" id="qrl-fold-enabled" checked>
+            <span>启用折叠按钮</span>
+        </label>
+        <div class="qrl-collapsible">
+            <div class="qrl-collapsible-header" id="qrl-fold-toggle">
+                <span>折叠按钮设置</span>
+                <span class="qrl-collapse-icon">▼</span>
+            </div>
+            <div class="qrl-collapsible-content" id="qrl-fold-content">
+                <div class="qrl-desc">勾选的按钮将折叠到弹窗列表中，取消勾选放回QR栏</div>
+                <label>折叠按钮间距:
+                    <span class="qrl-range-val" id="qrl-fold-gap-value">2</span>px
+                    <input type="range" id="qrl-fold-gap" min="0" max="20" value="2" class="range_slider">
+                    <button class="qrl-slider-reset" data-target="qrl-fold-gap" data-default="2">重置</button>
+                </label>
+                <div class="qrl-desc">弹窗内按钮之间的间距</div>
+                <button class="qrl-refresh-btn" id="qrl-fold-refresh">捕获并折叠全部按钮</button>
+                <div id="qrl-fold-list"></div>
+            </div>
+        </div>
 
         <hr>
 
@@ -447,6 +704,7 @@ function togglePanel(forceShow) {
         panel.style.display = 'block';
         loadPanelValues();
         syncGridGroup();
+        renderFoldList();
     } else {
         panel.classList.remove('qrl-visible');
         panel.style.display = 'none';
@@ -466,6 +724,14 @@ function bindPanelEvents() {
     $('qrl-enabled')?.addEventListener('change', function () {
         loadSettings().enabled = this.checked;
         saveAndApply();
+    });
+    $('qrl-fold-enabled')?.addEventListener('change', function () {
+        loadSettings().foldEnabled = this.checked;
+        if (!this.checked) {
+            loadSettings().foldedButtons = [];
+        }
+        saveAndApply();
+        renderFoldList();
     });
     $('qrl-layout-mode')?.addEventListener('change', function () {
         loadSettings().layoutMode = this.value;
@@ -516,6 +782,20 @@ function bindPanelEvents() {
     });
     $('qrl-reset-btn')?.addEventListener('click', showResetConfirm);
     $('qrl-refresh-buttons')?.addEventListener('click', () => { refreshButtonList(); applyButtonCustomizations(); });
+    $('qrl-fold-gap')?.addEventListener('input', function () {
+        $('qrl-fold-gap-value').textContent = this.value;
+        loadSettings().foldGap = Number(this.value);
+        applyFoldGap();
+        saveSettingsDebounced();
+    });
+    $('qrl-fold-refresh')?.addEventListener('click', () => {
+        const s = loadSettings();
+        s.foldedButtons = Array.from(document.querySelectorAll('#qrl-custom-buttons .qr--button:not(.qrl-fold-btn)'))
+            .map(getButtonName).filter(n => n);
+        applyFoldState();
+        renderFoldList();
+        saveSettingsDebounced();
+    });
     document.querySelectorAll('.qrl-slider-reset').forEach(btn => {
         btn.addEventListener('click', () => {
             const target = btn.dataset.target;
@@ -538,6 +818,24 @@ function bindCollapsibleEvents() {
         toggle.querySelector('.qrl-collapse-icon').textContent = isHidden ? '▲' : '▼';
         if (isHidden) refreshButtonList();
     });
+    const foldToggle = document.getElementById('qrl-fold-toggle');
+    const foldContent = document.getElementById('qrl-fold-content');
+    if (foldToggle && foldContent) {
+        foldToggle.addEventListener('click', () => {
+            const isHidden = foldContent.style.display === 'none' || !foldContent.style.display;
+            foldContent.style.display = isHidden ? 'block' : 'none';
+            foldToggle.querySelector('.qrl-collapse-icon').textContent = isHidden ? '▲' : '▼';
+            if (isHidden) renderFoldList();
+        });
+    }
+}
+
+function applyFoldGap() {
+    const s = loadSettings();
+    const popup = document.getElementById('qrl-fold-popup');
+    if (popup) {
+        popup.style.gap = s.foldGap + 'px';
+    }
 }
 
 function refreshButtonList() {
@@ -584,11 +882,42 @@ function renderButtonList() {
         container.innerHTML = '<div class="qrl-desc">未检测到快捷回复按钮，请先添加按钮后点击刷新</div>';
         return;
     }
+    
+    const foldedNames = (s.foldEnabled && s.foldedButtons) ? s.foldedButtons : [];
+    const unfolded = [];
+    const folded = [];
     s.buttonOrder.forEach(name => {
-        const scriptName = s.buttonScriptMap ? s.buttonScriptMap[name] || 'unknown' : 'unknown';
-        const item = createButtonItem(name, s.buttonStyles[name] || {}, scriptName);
-        container.appendChild(item);
+        if (foldedNames.includes(name)) {
+            folded.push(name);
+        } else {
+            unfolded.push(name);
+        }
     });
+    
+    if (unfolded.length > 0) {
+        const header = document.createElement('div');
+        header.className = 'qrl-group-header';
+        header.textContent = '未折叠（QR栏显示）';
+        container.appendChild(header);
+        unfolded.forEach(name => {
+            const scriptName = s.buttonScriptMap ? s.buttonScriptMap[name] || 'unknown' : 'unknown';
+            const item = createButtonItem(name, s.buttonStyles[name] || {}, scriptName);
+            container.appendChild(item);
+        });
+    }
+    
+    if (folded.length > 0) {
+        const header = document.createElement('div');
+        header.className = 'qrl-group-header qrl-group-folded';
+        header.textContent = '已折叠（弹窗显示）';
+        container.appendChild(header);
+        folded.forEach(name => {
+            const scriptName = s.buttonScriptMap ? s.buttonScriptMap[name] || 'unknown' : 'unknown';
+            const item = createButtonItem(name, s.buttonStyles[name] || {}, scriptName);
+            container.appendChild(item);
+        });
+    }
+    
     setupDragAndDrop(container);
 }
 
@@ -654,7 +983,7 @@ function createButtonItem(name, style, scriptName = 'unknown') {
             fontSize: Number(fontSizeInput.value),
             bold: boldInput.checked
         };
-        applyButtonStyles();
+        applySingleButtonStyle(name);
         saveSettingsDebounced();
     };
 
@@ -667,11 +996,13 @@ function createButtonItem(name, style, scriptName = 'unknown') {
         fontInput.value = defaultColor;
         fontSizeInput.value = defaultFontSize;
         boldInput.checked = false;
-        if (s.enabled) {
-            applyButtonStyles();
-        } else {
-            resetButtonStyles();
-        }
+        const allBtns = document.querySelectorAll('#qrl-custom-buttons .qr--button');
+        allBtns.forEach(btn => {
+            if (getButtonName(btn) !== name) return;
+            btn.style.removeProperty('color');
+            btn.style.removeProperty('font-size');
+            btn.style.removeProperty('font-weight');
+        });
         saveSettingsDebounced();
     });
 
@@ -682,6 +1013,17 @@ function setupDragAndDrop(container) {
     const items = Array.from(container.querySelectorAll('.qrl-btn-item'));
     let dragSrc = null;
     let pressTimer = null;
+    
+    const getGroup = (item) => {
+        let el = item;
+        while (el) {
+            if (el.classList && el.classList.contains('qrl-group-header')) {
+                return el.textContent;
+            }
+            el = el.previousElementSibling;
+        }
+        return '';
+    };
 
     items.forEach(item => {
         item.addEventListener('mousedown', (e) => {
@@ -714,16 +1056,16 @@ function setupDragAndDrop(container) {
         });
 
         item.addEventListener('dragover', (e) => {
+            if (!dragSrc || dragSrc === item) return;
+            if (getGroup(dragSrc) !== getGroup(item)) return;
             e.preventDefault();
-            if (dragSrc && dragSrc !== item) {
-                const rect = item.getBoundingClientRect();
-                const midpoint = rect.top + rect.height / 2;
-                item.classList.remove('qrl-drag-before', 'qrl-drag-after');
-                if (e.clientY < midpoint) {
-                    item.classList.add('qrl-drag-before');
-                } else {
-                    item.classList.add('qrl-drag-after');
-                }
+            const rect = item.getBoundingClientRect();
+            const midpoint = rect.top + rect.height / 2;
+            item.classList.remove('qrl-drag-before', 'qrl-drag-after');
+            if (e.clientY < midpoint) {
+                item.classList.add('qrl-drag-before');
+            } else {
+                item.classList.add('qrl-drag-after');
             }
         });
 
@@ -737,7 +1079,7 @@ function setupDragAndDrop(container) {
             const midpoint = rect.top + rect.height / 2;
             const insertBefore = e.clientY < midpoint;
             item.classList.remove('qrl-drag-before', 'qrl-drag-after');
-            if (dragSrc && dragSrc !== item) {
+            if (dragSrc && dragSrc !== item && getGroup(dragSrc) === getGroup(item)) {
                 insertItem(dragSrc, item, insertBefore);
             }
             dragSrc = null;
@@ -779,6 +1121,9 @@ function loadPanelValues() {
     $('qrl-btn-font-size').value = s.buttonFontSize;
     $('qrl-bar-max-height').value = s.barMaxHeight;
     $('qrl-preset-name').value = s.currentPreset || '';
+    $('qrl-fold-enabled').checked = s.foldEnabled !== false;
+    $('qrl-fold-gap').value = s.foldGap;
+    $('qrl-fold-gap-value').textContent = s.foldGap;
 }
 
 function populatePresetDropdown() {
