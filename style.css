@@ -8,14 +8,14 @@
     --qrl-bar-max-height: none;
 }
 
-body.qrl-active #send_form .qr--button {
+body.qrl-active #send_form #qrl-custom-buttons .qr--button {
     transform: scale(var(--qrl-btn-scale)) !important;
     transform-origin: center center !important;
     font-size: var(--qrl-btn-font-size) !important;
     margin: var(--qrl-margin-y) var(--qrl-margin-x) !important;
 }
 
-body.qrl-active #send_form > #qr--bar {
+body.qrl-active #qrl-custom-buttons {
     max-height: var(--qrl-bar-max-height) !important;
     overflow-y: auto !important;
 }
@@ -50,13 +50,17 @@ body.qrl-active #qrl-custom-buttons {
     padding: 0 !important;
 }
 
-body.qrl-active #qr--popout #qrl-custom-buttons {
-    width: auto !important;
-}
-
 #qrl-container .menu_button {
     width: auto !important;
     white-space: nowrap !important;
+}
+
+.qrl-warn {
+    color: #ffdd00 !important;
+    text-shadow: 0 0 4px #ffdd00, 0 0 8px rgba(255,221,0,0.5);
+    font-size: 11px;
+    font-weight: bold;
+    margin: 2px 0 4px;
 }
 
 #qrl-panel {

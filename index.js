@@ -5,7 +5,7 @@ const EXTENSION_NAME = 'qr-layout-customizer';
 
 const defaultSettings = {
     enabled: true,
-    layoutMode: 'grid',
+    layoutMode: 'flex',
     rows: 1,
     buttonScale: 100,
     marginY: 5,
@@ -54,7 +54,7 @@ function applySettings() {
         document.body.classList.remove('qrl-grid', 'qrl-flex');
         document.body.classList.add('qrl-' + s.layoutMode);
         
-        createCustomContainer();
+        syncCustomButtons();
         
         if (s.layoutMode === 'grid') {
             const buttons = document.querySelectorAll('#qrl-custom-buttons .qr--button');
@@ -89,75 +89,85 @@ function applySettings() {
     }
 }
 
-function getQrRoot() {
-    return document.getElementById('qr--popout') || document.getElementById('qr--bar');
-}
+let _qrObserver = null;
 
-function createCustomContainer() {
-    const root = getQrRoot();
-    if (!root) return;
+function syncCustomButtons() {
+    const sendForm = document.getElementById('send_form');
+    if (!sendForm) return;
     
-    document.querySelectorAll('#qrl-custom-buttons').forEach(container => {
-        if (!root.contains(container)) container.remove();
-    });
-    
-    let customContainer = root.querySelector('#qrl-custom-buttons');
-    
-    root.querySelectorAll('.qr--buttons:not(#qrl-custom-buttons)').forEach(container => {
-        container.style.removeProperty('display');
-    });
-    
-    const sourceButtons = Array.from(root.querySelectorAll('.qr--button'))
-        .filter(btn => !btn.closest('#qrl-custom-buttons'));
-    
-    if (sourceButtons.length === 0) {
-        if (customContainer) customContainer.remove();
-        return;
-    }
-    
+    let customContainer = document.getElementById('qrl-custom-buttons');
     if (!customContainer) {
         customContainer = document.createElement('div');
         customContainer.id = 'qrl-custom-buttons';
         customContainer.className = 'qr--buttons';
         customContainer.dataset.qrlCustom = 'true';
-        const firstContainer = root.querySelector('.qr--buttons:not(#qrl-custom-buttons)');
-        if (firstContainer) {
-            firstContainer.insertAdjacentElement('beforebegin', customContainer);
-        } else {
-            root.appendChild(customContainer);
-        }
+        sendForm.appendChild(customContainer);
     }
     
-    root.querySelectorAll('.qr--buttons:not(#qrl-custom-buttons)').forEach(container => {
-        container.style.display = 'none';
+    const qrBar = document.getElementById('qr--bar');
+    const qrPopout = document.getElementById('qr--popout');
+    if (qrBar) qrBar.style.display = 'none';
+    if (qrPopout) qrPopout.style.display = 'none';
+    
+    collectNewButtons();
+    
+    if (_qrObserver) _qrObserver.disconnect();
+    _qrObserver = new MutationObserver(() => {
+        clearTimeout(_qrObserver._timer);
+        _qrObserver._timer = setTimeout(() => {
+            if (loadSettings().enabled) {
+                collectNewButtons();
+            }
+        }, 200);
+    });
+    if (qrBar) _qrObserver.observe(qrBar, { childList: true, subtree: true });
+    if (qrPopout) _qrObserver.observe(qrPopout, { childList: true, subtree: true });
+}
+
+function collectNewButtons() {
+    const customContainer = document.getElementById('qrl-custom-buttons');
+    if (!customContainer) return;
+    
+    const allButtons = document.querySelectorAll('#qr--bar .qr--button, #qr--popout .qr--button');
+    allButtons.forEach(btn => {
+        if (!btn.closest('#qrl-custom-buttons')) {
+            customContainer.appendChild(btn);
+        }
     });
     
-    sourceButtons.forEach(btn => {
-        btn.style.removeProperty('display');
-        customContainer.appendChild(btn);
-    });
+    applyButtonOrder();
+    applyButtonStyles();
+    applyGridCols();
+}
+
+function applyGridCols() {
+    const s = loadSettings();
+    if (s.enabled && s.layoutMode === 'grid') {
+        const buttons = document.querySelectorAll('#qrl-custom-buttons .qr--button');
+        const totalButtons = buttons.length;
+        if (totalButtons > 0) {
+            const rows = Math.min(Math.max(1, s.rows), totalButtons);
+            const cols = Math.ceil(totalButtons / rows);
+            document.documentElement.style.setProperty('--qrl-cols', String(cols));
+        }
+    }
 }
 
 function removeCustomContainer() {
-    document.querySelectorAll('#qrl-custom-buttons').forEach(customContainer => {
-        const root = customContainer.closest('#qr--popout, #qr--bar');
-        const buttons = Array.from(customContainer.querySelectorAll('.qr--button'));
-        buttons.forEach(btn => {
-            btn.style.removeProperty('color');
-            btn.style.removeProperty('font-size');
-            btn.style.removeProperty('font-weight');
-            btn.style.removeProperty('transform');
-        });
-        
-        if (root) {
-            const originalContainers = root.querySelectorAll('.qr--buttons:not(#qrl-custom-buttons)');
-            originalContainers.forEach(c => {
-                c.style.removeProperty('display');
-            });
-        }
-        
+    if (_qrObserver) {
+        _qrObserver.disconnect();
+        _qrObserver = null;
+    }
+    
+    const customContainer = document.getElementById('qrl-custom-buttons');
+    if (customContainer) {
         customContainer.remove();
-    });
+    }
+    
+    const qrBar = document.getElementById('qr--bar');
+    if (qrBar) qrBar.style.removeProperty('display');
+    const qrPopout = document.getElementById('qr--popout');
+    if (qrPopout) qrPopout.style.removeProperty('display');
 }
 
 function saveAndApply() {
@@ -315,6 +325,7 @@ function createFloatingPanel() {
             <span>启用布局自定义</span>
         </label>
         <div class="qrl-desc">勾选后以下设置生效，取消则恢复默认样式</div>
+        <div class="qrl-warn">⚠ 取消勾选/关闭脚本按钮时，需要刷新网页才生效</div>
 
         <hr>
 
@@ -382,7 +393,7 @@ function createFloatingPanel() {
                 <span class="qrl-collapse-icon">▼</span>
             </div>
             <div class="qrl-collapsible-content" id="qrl-color-content">
-                <div class="qrl-desc">长按拖动按钮可互换位置<br>修改颜色/字号/加粗后即时生效</div>
+                <div class="qrl-desc">长按拖动按钮可互换位置<br>修改颜色/描边/加粗后即时生效</div>
                 <button class="qrl-refresh-btn" id="qrl-refresh-buttons">刷新按钮列表</button>
                 <div id="qrl-button-list"></div>
             </div>
@@ -531,10 +542,7 @@ function bindCollapsibleEvents() {
 
 function refreshButtonList() {
     const s = loadSettings();
-    const customContainer = document.getElementById('qrl-custom-buttons');
-    const buttons = customContainer 
-        ? Array.from(customContainer.querySelectorAll('.qr--button'))
-        : Array.from(document.querySelectorAll('#qr--bar .qr--button'));
+    const buttons = Array.from(document.querySelectorAll('#qrl-custom-buttons .qr--button, #qr--bar .qr--button, #qr--popout .qr--button'));
     const buttonScriptMap = new Map();
     const containerMap = new Map();
     let scriptIndex = 0;
@@ -592,9 +600,7 @@ function rgbToHex(rgb) {
 }
 
 function getButtonDefaultColor(name) {
-    const customContainer = document.getElementById('qrl-custom-buttons');
-    const selector = customContainer ? '#qrl-custom-buttons .qr--button' : '#qr--bar .qr--button';
-    const btn = Array.from(document.querySelectorAll(selector))
+    const btn = Array.from(document.querySelectorAll('#qrl-custom-buttons .qr--button, #qr--bar .qr--button, #qr--popout .qr--button'))
         .find(b => getButtonName(b) === name);
     if (btn) {
         const c = getComputedStyle(btn).color;
@@ -604,9 +610,7 @@ function getButtonDefaultColor(name) {
 }
 
 function getButtonDefaultFontSize(name) {
-    const customContainer = document.getElementById('qrl-custom-buttons');
-    const selector = customContainer ? '#qrl-custom-buttons .qr--button' : '#qr--bar .qr--button';
-    const btn = Array.from(document.querySelectorAll(selector))
+    const btn = Array.from(document.querySelectorAll('#qrl-custom-buttons .qr--button, #qr--bar .qr--button, #qr--popout .qr--button'))
         .find(b => getButtonName(b) === name);
     if (btn) {
         const size = getComputedStyle(btn).fontSize;
