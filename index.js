@@ -102,10 +102,16 @@ function createCustomContainer() {
     });
     
     let customContainer = root.querySelector('#qrl-custom-buttons');
+    
+    root.querySelectorAll('.qr--buttons:not(#qrl-custom-buttons)').forEach(container => {
+        container.style.removeProperty('display');
+    });
+    
     const sourceButtons = Array.from(root.querySelectorAll('.qr--button'))
         .filter(btn => !btn.closest('#qrl-custom-buttons'));
     
-    if (!customContainer && sourceButtons.length === 0) {
+    if (sourceButtons.length === 0) {
+        if (customContainer) customContainer.remove();
         return;
     }
     
@@ -114,7 +120,7 @@ function createCustomContainer() {
         customContainer.id = 'qrl-custom-buttons';
         customContainer.className = 'qr--buttons';
         customContainer.dataset.qrlCustom = 'true';
-        const firstContainer = root.querySelector('.qr--buttons');
+        const firstContainer = root.querySelector('.qr--buttons:not(#qrl-custom-buttons)');
         if (firstContainer) {
             firstContainer.insertAdjacentElement('beforebegin', customContainer);
         } else {
@@ -122,16 +128,14 @@ function createCustomContainer() {
         }
     }
     
-    if (sourceButtons.length > 0) {
-        root.querySelectorAll('.qr--buttons:not(#qrl-custom-buttons)').forEach(container => {
-            container.style.display = 'none';
-        });
-        
-        sourceButtons.forEach(btn => {
-            btn.style.removeProperty('display');
-            customContainer.appendChild(btn);
-        });
-    }
+    root.querySelectorAll('.qr--buttons:not(#qrl-custom-buttons)').forEach(container => {
+        container.style.display = 'none';
+    });
+    
+    sourceButtons.forEach(btn => {
+        btn.style.removeProperty('display');
+        customContainer.appendChild(btn);
+    });
 }
 
 function removeCustomContainer() {
@@ -396,20 +400,31 @@ function createFloatingPanel() {
 
 function makeDraggable(panel) {
     const header = document.getElementById('qrl-panel-header');
-    let dragging = false, ox, oy;
+    let dragging = false, ox, oy, pendingFrame = null;
     header.addEventListener('mousedown', (e) => {
         if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+        e.preventDefault();
         dragging = true;
         ox = e.clientX - panel.offsetLeft;
         oy = e.clientY - panel.offsetTop;
         panel.style.right = 'auto';
+        panel.style.userSelect = 'none';
     });
     document.addEventListener('mousemove', (e) => {
         if (!dragging) return;
-        panel.style.left = (e.clientX - ox) + 'px';
-        panel.style.top = (e.clientY - oy) + 'px';
+        if (pendingFrame) return;
+        const x = e.clientX - ox;
+        const y = e.clientY - oy;
+        pendingFrame = requestAnimationFrame(() => {
+            panel.style.left = x + 'px';
+            panel.style.top = y + 'px';
+            pendingFrame = null;
+        });
     });
-    document.addEventListener('mouseup', () => { dragging = false; });
+    document.addEventListener('mouseup', () => {
+        dragging = false;
+        panel.style.userSelect = '';
+    });
 }
 
 function togglePanel(forceShow) {
