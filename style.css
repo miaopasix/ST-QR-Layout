@@ -1,20 +1,18 @@
 :root {
-    --qrl-columns: 4;
-    --qrl-btn-min-width: unset;
-    --qrl-btn-max-width: unset;
-    --qrl-btn-height: auto;
+    --qrl-rows: 1;
+    --qrl-cols: 1;
+    --qrl-btn-scale: 1;
     --qrl-btn-font-size: inherit;
-    --qrl-btn-padding: 3px 5px;
-    --qrl-gap: 5px;
+    --qrl-margin-y: 5px;
+    --qrl-margin-x: 5px;
     --qrl-bar-max-height: none;
 }
 
 body.qrl-active #send_form .qr--button {
-    min-width: var(--qrl-btn-min-width) !important;
-    max-width: var(--qrl-btn-max-width) !important;
-    height: var(--qrl-btn-height) !important;
+    transform: scale(var(--qrl-btn-scale)) !important;
+    transform-origin: center center !important;
     font-size: var(--qrl-btn-font-size) !important;
-    padding: var(--qrl-btn-padding) !important;
+    margin: var(--qrl-margin-y) var(--qrl-margin-x) !important;
 }
 
 body.qrl-active #send_form > #qr--bar {
@@ -22,34 +20,38 @@ body.qrl-active #send_form > #qr--bar {
     overflow-y: auto !important;
 }
 
-body.qrl-active.qrl-grid #send_form > #qr--bar > .qr--buttons {
+body.qrl-active.qrl-grid #qrl-custom-buttons {
     display: grid !important;
-    grid-template-columns: repeat(var(--qrl-columns), 1fr) !important;
+    grid-template-columns: repeat(var(--qrl-cols), auto) !important;
+    justify-content: center !important;
+    justify-items: center !important;
+    align-items: center !important;
     width: 100% !important;
-}
-
-body.qrl-active.qrl-flex #send_form > #qr--bar > .qr--buttons {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    width: auto !important;
-}
-
-body.qrl-active.qrl-grid #send_form > #qr--bar > .qr--buttons > .qr--buttons,
-body.qrl-active.qrl-flex #send_form > #qr--bar > .qr--buttons > .qr--buttons {
-    display: contents !important;
-}
-
-body.qrl-active #send_form > #qr--bar > .qr--buttons {
-    gap: var(--qrl-gap) !important;
-}
-
-body.qrl-active #send_form > #qr--bar.flex-container {
     gap: 0 !important;
 }
 
-body.qrl-active #send_form > #qr--bar > .qr--buttons {
+body.qrl-active #qrl-custom-buttons .qr--button {
+    width: max-content !important;
+    justify-self: center !important;
+    align-self: center !important;
+}
+
+body.qrl-active.qrl-flex #qrl-custom-buttons {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    gap: 0 !important;
+}
+
+body.qrl-active #qrl-custom-buttons {
     margin: 0 !important;
     padding: 0 !important;
+}
+
+body.qrl-active #qr--popout #qrl-custom-buttons {
+    width: auto !important;
 }
 
 #qrl-container .menu_button {
@@ -175,6 +177,22 @@ body.qrl-active #send_form > #qr--bar > .qr--buttons {
     flex: 1;
     height: 16px;
 }
+.qrl-slider-reset {
+    font-size: 10px;
+    padding: 1px 5px;
+    margin-left: auto;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--border-color, #555);
+    border-radius: 3px;
+    color: var(--text-muted, #999);
+    height: 18px;
+    display: flex;
+    align-items: center;
+}
+.qrl-slider-reset:hover {
+    filter: brightness(1.3);
+}
 .qrl-range-val {
     min-width: 20px;
     text-align: right;
@@ -258,9 +276,17 @@ body.qrl-active #send_form > #qr--bar > .qr--buttons {
 .qrl-btn-item.qrl-dragging {
     opacity: 0.4;
 }
-.qrl-btn-item.qrl-drag-over {
-    border-color: var(--SmartThemeBodyColor, #fff);
-    background: rgba(255,255,255,0.1);
+.qrl-btn-item.qrl-drag-before {
+    border-top: 2px solid var(--SmartThemeBodyColor, #fff);
+}
+.qrl-btn-item.qrl-drag-after {
+    border-bottom: 2px solid var(--SmartThemeBodyColor, #fff);
+}
+.qrl-script-tag {
+    font-size: 9px;
+    color: var(--text-muted, #888);
+    margin-left: 4px;
+    opacity: 0.7;
 }
 .qrl-drag-handle {
     cursor: grab;
@@ -298,17 +324,19 @@ body.qrl-active #send_form > #qr--bar > .qr--buttons {
     background: transparent;
 }
 .qrl-btn-item input[type="number"] {
-    width: 28px;
+    width: 40px;
     height: 20px;
     font-size: 10px;
     padding: 0 2px;
     text-align: center;
+    color: #000000;
+    background: #ffffff;
 }
 .qrl-btn-item input[type="checkbox"] {
     margin: 0;
     cursor: pointer;
 }
-.qrl-clear-btn {
+.qrl-reset-btn {
     font-size: 10px;
     padding: 1px 5px;
     margin-left: auto;
@@ -321,7 +349,7 @@ body.qrl-active #send_form > #qr--bar > .qr--buttons {
     display: flex;
     align-items: center;
 }
-.qrl-clear-btn:hover {
+.qrl-reset-btn:hover {
     filter: brightness(1.3);
 }
 

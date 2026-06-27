@@ -6,19 +6,18 @@ const EXTENSION_NAME = 'qr-layout-customizer';
 const defaultSettings = {
     enabled: true,
     layoutMode: 'grid',
-    columns: 4,
-    buttonMinWidth: 'unset',
-    buttonMaxWidth: 'unset',
-    buttonHeight: 'auto',
-    gap: 5,
+    rows: 1,
+    buttonScale: 100,
+    marginY: 5,
+    marginX: 5,
     buttonFontSize: 'inherit',
-    buttonPadding: '3px 5px',
     barMaxHeight: 'none',
     buttonOrder: [],
     buttonStyles: {},
+    buttonScriptMap: {},
 };
 
-const LAYOUT_FIELDS = ['enabled', 'layoutMode', 'columns', 'buttonMinWidth', 'buttonMaxWidth', 'buttonHeight', 'gap', 'buttonFontSize', 'buttonPadding', 'barMaxHeight'];
+const LAYOUT_FIELDS = ['enabled', 'layoutMode', 'rows', 'buttonScale', 'marginY', 'marginX', 'buttonFontSize', 'barMaxHeight'];
 
 let _confirmCallback = null;
 
@@ -31,6 +30,7 @@ function loadSettings() {
     if (!s.currentPreset) s.currentPreset = '';
     if (!s.buttonOrder) s.buttonOrder = [];
     if (!s.buttonStyles) s.buttonStyles = {};
+    if (!s.buttonScriptMap) s.buttonScriptMap = {};
     return s;
 }
 
@@ -53,17 +53,107 @@ function applySettings() {
         document.body.classList.add('qrl-active');
         document.body.classList.remove('qrl-grid', 'qrl-flex');
         document.body.classList.add('qrl-' + s.layoutMode);
-        root.style.setProperty('--qrl-columns', String(s.columns));
-        root.style.setProperty('--qrl-btn-min-width', s.buttonMinWidth);
-        root.style.setProperty('--qrl-btn-max-width', s.buttonMaxWidth);
-        root.style.setProperty('--qrl-btn-height', s.buttonHeight);
+        
+        createCustomContainer();
+        
+        if (s.layoutMode === 'grid') {
+            const buttons = document.querySelectorAll('#qrl-custom-buttons .qr--button');
+            const totalButtons = buttons.length;
+            if (totalButtons > 0) {
+                const rows = Math.min(Math.max(1, s.rows), totalButtons);
+                const cols = Math.ceil(totalButtons / rows);
+                root.style.setProperty('--qrl-cols', String(cols));
+            } else {
+                root.style.setProperty('--qrl-cols', '1');
+            }
+        }
+        
+        root.style.setProperty('--qrl-rows', String(s.rows));
+        root.style.setProperty('--qrl-btn-scale', (s.buttonScale / 100).toString());
         root.style.setProperty('--qrl-btn-font-size', s.buttonFontSize);
-        root.style.setProperty('--qrl-btn-padding', s.buttonPadding);
-        root.style.setProperty('--qrl-gap', s.gap + 'px');
+        root.style.setProperty('--qrl-margin-y', s.marginY + 'px');
+        root.style.setProperty('--qrl-margin-x', s.marginX + 'px');
         root.style.setProperty('--qrl-bar-max-height', s.barMaxHeight);
+        applyButtonOrder();
+        applyButtonStyles();
     } else {
         document.body.classList.remove('qrl-active', 'qrl-grid', 'qrl-flex');
+        root.style.removeProperty('--qrl-rows');
+        root.style.removeProperty('--qrl-cols');
+        root.style.removeProperty('--qrl-btn-scale');
+        root.style.removeProperty('--qrl-btn-font-size');
+        root.style.removeProperty('--qrl-margin-y');
+        root.style.removeProperty('--qrl-margin-x');
+        root.style.removeProperty('--qrl-bar-max-height');
+        removeCustomContainer();
     }
+}
+
+function getQrRoot() {
+    return document.getElementById('qr--popout') || document.getElementById('qr--bar');
+}
+
+function createCustomContainer() {
+    const root = getQrRoot();
+    if (!root) return;
+    
+    document.querySelectorAll('#qrl-custom-buttons').forEach(container => {
+        if (!root.contains(container)) container.remove();
+    });
+    
+    let customContainer = root.querySelector('#qrl-custom-buttons');
+    const sourceButtons = Array.from(root.querySelectorAll('.qr--button'))
+        .filter(btn => !btn.closest('#qrl-custom-buttons'));
+    
+    if (!customContainer && sourceButtons.length === 0) {
+        return;
+    }
+    
+    if (!customContainer) {
+        customContainer = document.createElement('div');
+        customContainer.id = 'qrl-custom-buttons';
+        customContainer.className = 'qr--buttons';
+        customContainer.dataset.qrlCustom = 'true';
+        const firstContainer = root.querySelector('.qr--buttons');
+        if (firstContainer) {
+            firstContainer.insertAdjacentElement('beforebegin', customContainer);
+        } else {
+            root.appendChild(customContainer);
+        }
+    }
+    
+    if (sourceButtons.length > 0) {
+        root.querySelectorAll('.qr--buttons:not(#qrl-custom-buttons)').forEach(container => {
+            container.style.display = 'none';
+        });
+        
+        sourceButtons.forEach(btn => {
+            btn.style.removeProperty('display');
+            customContainer.appendChild(btn);
+        });
+    }
+}
+
+function removeCustomContainer() {
+    document.querySelectorAll('#qrl-custom-buttons').forEach(customContainer => {
+        const root = customContainer.closest('#qr--popout, #qr--bar');
+        const buttons = Array.from(customContainer.querySelectorAll('.qr--button'));
+        buttons.forEach(btn => {
+            btn.style.removeProperty('color');
+            btn.style.removeProperty('font-size');
+            btn.style.removeProperty('font-weight');
+            btn.style.removeProperty('transform');
+        });
+        
+        if (root) {
+            const originalContainers = root.querySelectorAll('.qr--buttons:not(#qrl-custom-buttons)');
+            originalContainers.forEach(c => {
+                c.style.removeProperty('display');
+            });
+        }
+        
+        customContainer.remove();
+    });
 }
 
 function saveAndApply() {
@@ -77,46 +167,50 @@ function getButtonName(btn) {
 
 function applyButtonOrder() {
     const s = loadSettings();
+    if (!s.enabled) return;
     if (!s.buttonOrder || s.buttonOrder.length < 2) return;
-    const containers = new Map();
-    document.querySelectorAll('#qr--bar .qr--button').forEach(btn => {
-        const parent = btn.parentElement;
-        if (!containers.has(parent)) containers.set(parent, []);
-        containers.get(parent).push(btn);
+    
+    const container = document.getElementById('qrl-custom-buttons');
+    if (!container) return;
+    
+    const allButtons = Array.from(container.querySelectorAll('.qr--button'));
+    if (allButtons.length < 2) return;
+    
+    allButtons.sort((a, b) => {
+        const aIdx = s.buttonOrder.indexOf(getButtonName(a));
+        const bIdx = s.buttonOrder.indexOf(getButtonName(b));
+        if (aIdx === -1 && bIdx === -1) return 0;
+        if (aIdx === -1) return 1;
+        if (bIdx === -1) return -1;
+        return aIdx - bIdx;
     });
-    containers.forEach((buttons, container) => {
-        if (buttons.length < 2) return;
-        buttons.sort((a, b) => {
-            const aIdx = s.buttonOrder.indexOf(getButtonName(a));
-            const bIdx = s.buttonOrder.indexOf(getButtonName(b));
-            if (aIdx === -1 && bIdx === -1) return 0;
-            if (aIdx === -1) return 1;
-            if (bIdx === -1) return -1;
-            return aIdx - bIdx;
-        });
-        buttons.forEach(btn => container.appendChild(btn));
-    });
+    allButtons.forEach(btn => container.appendChild(btn));
 }
 
 function applyButtonStyles() {
     const s = loadSettings();
+    if (!s.enabled) return;
     if (!s.buttonStyles) return;
-    document.querySelectorAll('#qr--bar .qr--button').forEach(btn => {
+    
+    const container = document.getElementById('qrl-custom-buttons');
+    if (!container) return;
+    
+    container.querySelectorAll('.qr--button').forEach(btn => {
         const name = getButtonName(btn);
         const st = s.buttonStyles[name];
         if (st) {
             if (st.color) btn.style.setProperty('color', st.color, 'important');
             else btn.style.removeProperty('color');
-            if (st.strokeWidth > 0 && st.strokeColor) {
-                btn.style.setProperty('-webkit-text-stroke', `${st.strokeWidth}px ${st.strokeColor}`, 'important');
+            if (st.fontSize && st.fontSize > 0) {
+                btn.style.setProperty('font-size', `${st.fontSize}px`, 'important');
             } else {
-                btn.style.removeProperty('-webkit-text-stroke');
+                btn.style.removeProperty('font-size');
             }
             if (st.bold) btn.style.setProperty('font-weight', 'bold', 'important');
             else btn.style.removeProperty('font-weight');
         } else {
             btn.style.removeProperty('color');
-            btn.style.removeProperty('-webkit-text-stroke');
+            btn.style.removeProperty('font-size');
             btn.style.removeProperty('font-weight');
         }
     });
@@ -125,6 +219,31 @@ function applyButtonStyles() {
 function applyButtonCustomizations() {
     applyButtonOrder();
     applyButtonStyles();
+}
+
+function resetButtonStyles() {
+    const container = document.getElementById('qrl-custom-buttons');
+    if (!container) return;
+    container.querySelectorAll('.qr--button').forEach(btn => {
+        btn.style.removeProperty('color');
+        btn.style.removeProperty('font-size');
+        btn.style.removeProperty('font-weight');
+        btn.style.removeProperty('transform');
+    });
+}
+
+function fullReset() {
+    const s = loadSettings();
+    applyLayoutToSettings(s, defaultSettings);
+    s.enabled = defaultSettings.enabled;
+    s.buttonOrder = [];
+    s.buttonStyles = {};
+    s.buttonScriptMap = {};
+    applySettings();
+    loadPanelValues();
+    syncGridGroup();
+    saveSettingsDebounced();
+    renderButtonList();
 }
 
 function renderSettings() {
@@ -199,37 +318,45 @@ function createFloatingPanel() {
         <label>
             布局模式:
             <select id="qrl-layout-mode" class="text_pole">
-                <option value="grid">CSS 网格</option>
+                <option value="grid">行数</option>
                 <option value="flex">弹性换行</option>
             </select>
         </label>
-        <div class="qrl-desc">网格：按钮按列整齐排列<br>弹性：按钮按自身宽度自然换行</div>
+        <div class="qrl-desc">行数：按指定行数自动分配按钮<br>弹性：按钮按自身宽度自然换行</div>
         <div id="qrl-columns-group">
-            <label>列数:
-                <span class="qrl-range-val" id="qrl-columns-value">4</span>
-                <input type="range" id="qrl-columns" min="1" max="8" class="range_slider">
+            <label>行数:
+                <span class="qrl-range-val" id="qrl-columns-value">1</span>
+                <input type="range" id="qrl-columns" min="1" max="5" class="range_slider">
+                <button class="qrl-slider-reset" data-target="qrl-columns" data-default="1">重置</button>
             </label>
-            <div class="qrl-desc">仅网格模式生效，每行按钮数（1-8列）</div>
+            <div class="qrl-desc">按钮自动分配到指定行数（1-5行）</div>
         </div>
 
         <hr>
 
         <div class="qrl-section-label">按钮尺寸</div>
-        <label>最小宽度: <input type="text" id="qrl-btn-min-width" class="text_pole" placeholder="例: unset"></label>
-        <label>最大宽度: <input type="text" id="qrl-btn-max-width" class="text_pole" placeholder="例: unset"></label>
-        <label>高度: <input type="text" id="qrl-btn-height" class="text_pole" placeholder="例: auto"></label>
-        <div class="qrl-desc">可填：<code>unset</code>（不限）、<code>50px</code>、<code>auto</code>（自动）、<code>100%</code>（撑满）</div>
+        <label>大小:
+            <span class="qrl-range-val" id="qrl-btn-scale-value">100</span>%
+            <input type="range" id="qrl-btn-scale" min="50" max="150" value="100" class="range_slider">
+            <button class="qrl-slider-reset" data-target="qrl-btn-scale" data-default="100">重置</button>
+        </label>
+        <div class="qrl-desc">按钮等比缩放（50%-150%），不影响字号设置</div>
 
         <hr>
 
         <div class="qrl-section-label">边距</div>
-        <label>内边距: <input type="text" id="qrl-btn-padding" class="text_pole" placeholder="例: 3px 5px"></label>
-        <div class="qrl-desc">按钮内部留白<br>如 <code>3px 5px</code> 表示上下3px左右5px<br>如 <code>4px</code> 表示四边统一</div>
-        <label>间距:
-            <span class="qrl-range-val" id="qrl-gap-value">5</span>px
-            <input type="range" id="qrl-gap" min="0" max="30" class="range_slider">
+        <label>按钮上下间距:
+            <span class="qrl-range-val" id="qrl-margin-y-value">5</span>px
+            <input type="range" id="qrl-margin-y" min="-50" max="50" value="5" class="range_slider">
+            <button class="qrl-slider-reset" data-target="qrl-margin-y" data-default="5">重置</button>
         </label>
-        <div class="qrl-desc">按钮之间的间距，数值越大间隔越远</div>
+        <div class="qrl-desc">按钮上下的间距，负值靠近，正值远离</div>
+        <label>按钮左右间距:
+            <span class="qrl-range-val" id="qrl-margin-x-value">5</span>px
+            <input type="range" id="qrl-margin-x" min="-50" max="50" value="5" class="range_slider">
+            <button class="qrl-slider-reset" data-target="qrl-margin-x" data-default="5">重置</button>
+        </label>
+        <div class="qrl-desc">按钮左右的间距，负值靠近，正值远离</div>
 
         <hr>
 
@@ -251,7 +378,7 @@ function createFloatingPanel() {
                 <span class="qrl-collapse-icon">▼</span>
             </div>
             <div class="qrl-collapsible-content" id="qrl-color-content">
-                <div class="qrl-desc">长按拖动按钮可互换位置<br>修改颜色/描边/加粗后即时生效</div>
+                <div class="qrl-desc">长按拖动按钮可互换位置<br>修改颜色/字号/加粗后即时生效</div>
                 <button class="qrl-refresh-btn" id="qrl-refresh-buttons">刷新按钮列表</button>
                 <div id="qrl-button-list"></div>
             </div>
@@ -321,22 +448,30 @@ function bindPanelEvents() {
     });
     $('qrl-columns')?.addEventListener('input', function () {
         $('qrl-columns-value').textContent = this.value;
-        loadSettings().columns = Number(this.value);
+        loadSettings().rows = Number(this.value);
         applySettings();
         saveSettingsDebounced();
     });
-    $('qrl-gap')?.addEventListener('input', function () {
-        $('qrl-gap-value').textContent = this.value;
-        loadSettings().gap = Number(this.value);
+    $('qrl-margin-y')?.addEventListener('input', function () {
+        $('qrl-margin-y-value').textContent = this.value;
+        loadSettings().marginY = Number(this.value);
+        applySettings();
+        saveSettingsDebounced();
+    });
+    $('qrl-margin-x')?.addEventListener('input', function () {
+        $('qrl-margin-x-value').textContent = this.value;
+        loadSettings().marginX = Number(this.value);
+        applySettings();
+        saveSettingsDebounced();
+    });
+    $('qrl-btn-scale')?.addEventListener('input', function () {
+        $('qrl-btn-scale-value').textContent = this.value;
+        loadSettings().buttonScale = Number(this.value);
         applySettings();
         saveSettingsDebounced();
     });
 
     const fieldMap = {
-        'qrl-btn-min-width': 'buttonMinWidth',
-        'qrl-btn-max-width': 'buttonMaxWidth',
-        'qrl-btn-height': 'buttonHeight',
-        'qrl-btn-padding': 'buttonPadding',
         'qrl-btn-font-size': 'buttonFontSize',
         'qrl-bar-max-height': 'barMaxHeight',
     };
@@ -355,6 +490,16 @@ function bindPanelEvents() {
     });
     $('qrl-reset-btn')?.addEventListener('click', showResetConfirm);
     $('qrl-refresh-buttons')?.addEventListener('click', () => { refreshButtonList(); applyButtonCustomizations(); });
+    document.querySelectorAll('.qrl-slider-reset').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = btn.dataset.target;
+            const value = btn.dataset.default;
+            const input = document.getElementById(target);
+            if (!input) return;
+            input.value = value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    });
 }
 
 function bindCollapsibleEvents() {
@@ -371,8 +516,26 @@ function bindCollapsibleEvents() {
 
 function refreshButtonList() {
     const s = loadSettings();
-    const buttons = Array.from(document.querySelectorAll('#qr--bar .qr--button'));
-    const names = buttons.map(getButtonName).filter(n => n);
+    const customContainer = document.getElementById('qrl-custom-buttons');
+    const buttons = customContainer 
+        ? Array.from(customContainer.querySelectorAll('.qr--button'))
+        : Array.from(document.querySelectorAll('#qr--bar .qr--button'));
+    const buttonScriptMap = new Map();
+    const containerMap = new Map();
+    let scriptIndex = 0;
+    
+    buttons.forEach(btn => {
+        const name = getButtonName(btn);
+        if (!name) return;
+        const parent = btn.parentElement;
+        if (!containerMap.has(parent)) {
+            containerMap.set(parent, `脚本${++scriptIndex}`);
+        }
+        const scriptName = containerMap.get(parent);
+        buttonScriptMap.set(name, scriptName);
+    });
+    
+    const names = Array.from(buttonScriptMap.keys());
     const unique = [...new Set(names)];
     if (!s.buttonOrder || s.buttonOrder.length === 0) {
         s.buttonOrder = unique.slice();
@@ -382,6 +545,10 @@ function refreshButtonList() {
     });
     s.buttonOrder = s.buttonOrder.filter(n => unique.includes(n));
     if (!s.buttonStyles) s.buttonStyles = {};
+    if (!s.buttonScriptMap) s.buttonScriptMap = {};
+    buttonScriptMap.forEach((scriptName, btnName) => {
+        s.buttonScriptMap[btnName] = scriptName;
+    });
     renderButtonList();
 }
 
@@ -395,7 +562,8 @@ function renderButtonList() {
         return;
     }
     s.buttonOrder.forEach(name => {
-        const item = createButtonItem(name, s.buttonStyles[name] || {});
+        const scriptName = s.buttonScriptMap ? s.buttonScriptMap[name] || 'unknown' : 'unknown';
+        const item = createButtonItem(name, s.buttonStyles[name] || {}, scriptName);
         container.appendChild(item);
     });
     setupDragAndDrop(container);
@@ -409,7 +577,9 @@ function rgbToHex(rgb) {
 }
 
 function getButtonDefaultColor(name) {
-    const btn = Array.from(document.querySelectorAll('#qr--bar .qr--button'))
+    const customContainer = document.getElementById('qrl-custom-buttons');
+    const selector = customContainer ? '#qrl-custom-buttons .qr--button' : '#qr--bar .qr--button';
+    const btn = Array.from(document.querySelectorAll(selector))
         .find(b => getButtonName(b) === name);
     if (btn) {
         const c = getComputedStyle(btn).color;
@@ -418,36 +588,51 @@ function getButtonDefaultColor(name) {
     return '#ffffff';
 }
 
-function createButtonItem(name, style) {
+function getButtonDefaultFontSize(name) {
+    const customContainer = document.getElementById('qrl-custom-buttons');
+    const selector = customContainer ? '#qrl-custom-buttons .qr--button' : '#qr--bar .qr--button';
+    const btn = Array.from(document.querySelectorAll(selector))
+        .find(b => getButtonName(b) === name);
+    if (btn) {
+        const size = getComputedStyle(btn).fontSize;
+        return parseInt(size) || 12;
+    }
+    return 12;
+}
+
+function createButtonItem(name, style, scriptName = 'unknown') {
     const s = loadSettings();
     const div = document.createElement('div');
     div.className = 'qrl-btn-item';
     div.dataset.name = name;
-    const defaultColor = style.color || getButtonDefaultColor(name);
+    div.dataset.script = scriptName;
+    const defaultColor = getButtonDefaultColor(name);
+    const defaultFontSize = getButtonDefaultFontSize(name);
+    const currentColor = style.color || defaultColor;
+    const currentFontSize = (style.fontSize !== undefined && style.fontSize > 0) ? style.fontSize : defaultFontSize;
     div.innerHTML = `
         <span class="qrl-drag-handle">☰</span>
         <span class="qrl-btn-name" title="${name}">${name}</span>
+        <span class="qrl-script-tag">[${scriptName}]</span>
         <div class="qrl-btn-controls">
-            <span>字色</span><input type="color" class="qrl-clr-font" value="${defaultColor}">
-            <span>描边</span><input type="color" class="qrl-clr-stroke" value="${style.strokeColor || '#000000'}">
-            <span>宽</span><input type="number" class="qrl-stroke-w" min="0" max="5" value="${style.strokeWidth || 0}">px
+            <span>字色</span><input type="color" class="qrl-clr-font" value="${currentColor}">
+            <span>字号</span><input type="number" class="qrl-font-size" min="8" max="32" value="${currentFontSize}">px
             <label><input type="checkbox" class="qrl-bold" ${style.bold ? 'checked' : ''}>粗</label>
         </div>
-        <button class="qrl-clear-btn">清除</button>
+        <button class="qrl-reset-btn">重置</button>
     `;
 
     const fontInput = div.querySelector('.qrl-clr-font');
-    const strokeInput = div.querySelector('.qrl-clr-stroke');
-    const widthInput = div.querySelector('.qrl-stroke-w');
+    const fontSizeInput = div.querySelector('.qrl-font-size');
     const boldInput = div.querySelector('.qrl-bold');
-    const clearBtn = div.querySelector('.qrl-clear-btn');
+    const resetBtn = div.querySelector('.qrl-reset-btn');
 
     const updateStyle = () => {
+        if (!s.enabled) return;
         if (!s.buttonStyles) s.buttonStyles = {};
         s.buttonStyles[name] = {
             color: fontInput.value,
-            strokeColor: strokeInput.value,
-            strokeWidth: Number(widthInput.value),
+            fontSize: Number(fontSizeInput.value),
             bold: boldInput.checked
         };
         applyButtonStyles();
@@ -455,15 +640,20 @@ function createButtonItem(name, style) {
     };
 
     fontInput.addEventListener('change', updateStyle);
-    strokeInput.addEventListener('change', updateStyle);
-    widthInput.addEventListener('change', updateStyle);
+    fontSizeInput.addEventListener('change', updateStyle);
     boldInput.addEventListener('change', updateStyle);
 
-    clearBtn.addEventListener('click', () => {
+    resetBtn.addEventListener('click', () => {
         if (s.buttonStyles) delete s.buttonStyles[name];
-        applyButtonStyles();
+        fontInput.value = defaultColor;
+        fontSizeInput.value = defaultFontSize;
+        boldInput.checked = false;
+        if (s.enabled) {
+            applyButtonStyles();
+        } else {
+            resetButtonStyles();
+        }
         saveSettingsDebounced();
-        renderButtonList();
     });
 
     return div;
@@ -507,34 +697,48 @@ function setupDragAndDrop(container) {
         item.addEventListener('dragover', (e) => {
             e.preventDefault();
             if (dragSrc && dragSrc !== item) {
-                item.classList.add('qrl-drag-over');
+                const rect = item.getBoundingClientRect();
+                const midpoint = rect.top + rect.height / 2;
+                item.classList.remove('qrl-drag-before', 'qrl-drag-after');
+                if (e.clientY < midpoint) {
+                    item.classList.add('qrl-drag-before');
+                } else {
+                    item.classList.add('qrl-drag-after');
+                }
             }
         });
 
         item.addEventListener('dragleave', () => {
-            item.classList.remove('qrl-drag-over');
+            item.classList.remove('qrl-drag-before', 'qrl-drag-after');
         });
 
         item.addEventListener('drop', (e) => {
             e.preventDefault();
-            item.classList.remove('qrl-drag-over');
+            const rect = item.getBoundingClientRect();
+            const midpoint = rect.top + rect.height / 2;
+            const insertBefore = e.clientY < midpoint;
+            item.classList.remove('qrl-drag-before', 'qrl-drag-after');
             if (dragSrc && dragSrc !== item) {
-                swapListItems(dragSrc, item);
+                insertItem(dragSrc, item, insertBefore);
             }
             dragSrc = null;
         });
     });
 }
 
-function swapListItems(itemA, itemB) {
+function insertItem(srcItem, targetItem, insertBefore) {
     const s = loadSettings();
-    const nameA = itemA.dataset.name;
-    const nameB = itemB.dataset.name;
-    const idxA = s.buttonOrder.indexOf(nameA);
-    const idxB = s.buttonOrder.indexOf(nameB);
-    if (idxA >= 0 && idxB >= 0) {
-        [s.buttonOrder[idxA], s.buttonOrder[idxB]] = [s.buttonOrder[idxB], s.buttonOrder[idxA]];
-    }
+    const srcName = srcItem.dataset.name;
+    const targetName = targetItem.dataset.name;
+    const srcIdx = s.buttonOrder.indexOf(srcName);
+    const targetIdx = s.buttonOrder.indexOf(targetName);
+    if (srcIdx < 0 || targetIdx < 0) return;
+    
+    s.buttonOrder.splice(srcIdx, 1);
+    const newTargetIdx = s.buttonOrder.indexOf(targetName);
+    const insertIdx = insertBefore ? newTargetIdx : newTargetIdx + 1;
+    s.buttonOrder.splice(insertIdx, 0, srcName);
+    
     renderButtonList();
     applyButtonOrder();
     saveSettingsDebounced();
@@ -545,15 +749,15 @@ function loadPanelValues() {
     const $ = (id) => document.getElementById(id);
     $('qrl-enabled').checked = s.enabled;
     $('qrl-layout-mode').value = s.layoutMode;
-    $('qrl-columns').value = s.columns;
-    $('qrl-columns-value').textContent = s.columns;
-    $('qrl-btn-min-width').value = s.buttonMinWidth;
-    $('qrl-btn-max-width').value = s.buttonMaxWidth;
-    $('qrl-btn-height').value = s.buttonHeight;
-    $('qrl-gap').value = s.gap;
-    $('qrl-gap-value').textContent = s.gap;
+    $('qrl-columns').value = s.rows;
+    $('qrl-columns-value').textContent = s.rows;
+    $('qrl-btn-scale').value = s.buttonScale;
+    $('qrl-btn-scale-value').textContent = s.buttonScale;
+    $('qrl-margin-y').value = s.marginY;
+    $('qrl-margin-y-value').textContent = s.marginY;
+    $('qrl-margin-x').value = s.marginX;
+    $('qrl-margin-x-value').textContent = s.marginX;
     $('qrl-btn-font-size').value = s.buttonFontSize;
-    $('qrl-btn-padding').value = s.buttonPadding;
     $('qrl-bar-max-height').value = s.barMaxHeight;
     $('qrl-preset-name').value = s.currentPreset || '';
 }
@@ -655,15 +859,7 @@ function showResetConfirm() {
 }
 
 function doReset() {
-    const s = loadSettings();
-    applyLayoutToSettings(s, defaultSettings);
-    s.buttonOrder = [];
-    s.buttonStyles = {};
-    loadPanelValues();
-    syncGridGroup();
-    applyButtonCustomizations();
-    saveAndApply();
-    renderButtonList();
+    fullReset();
 }
 
 jQuery(async () => {
