@@ -779,10 +779,12 @@ function createFloatingPanel() {
 function makeDraggable(panel) {
     const header = document.getElementById('qrl-panel-header');
     let dragging = false, ox, oy, pendingFrame = null;
-    header.addEventListener('mousedown', (e) => {
+    header.style.touchAction = 'none';
+    header.addEventListener('pointerdown', (e) => {
         if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
         e.preventDefault();
         dragging = true;
+        header.setPointerCapture(e.pointerId);
         const rect = panel.getBoundingClientRect();
         ox = e.clientX - rect.left;
         oy = e.clientY - rect.top;
@@ -791,7 +793,7 @@ function makeDraggable(panel) {
         panel.style.right = 'auto';
         panel.style.userSelect = 'none';
     });
-    document.addEventListener('mousemove', (e) => {
+    header.addEventListener('pointermove', (e) => {
         if (!dragging) return;
         if (pendingFrame) return;
         const x = e.clientX - ox;
@@ -802,7 +804,11 @@ function makeDraggable(panel) {
             pendingFrame = null;
         });
     });
-    document.addEventListener('mouseup', () => {
+    header.addEventListener('pointerup', () => {
+        dragging = false;
+        panel.style.userSelect = '';
+    });
+    header.addEventListener('pointercancel', () => {
         dragging = false;
         panel.style.userSelect = '';
     });
