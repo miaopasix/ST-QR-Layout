@@ -18,9 +18,15 @@ const defaultSettings = {
     foldedButtons: null,
     foldEnabled: true,
     foldGap: 2,
+    foldGapY: 2,
+    foldButtonScale: 100,
+    foldButtonIcon: 'fa-mosaic fa-solid fa-house',
+    foldButtonColor: '',
 };
 
 const LAYOUT_FIELDS = ['enabled', 'layoutMode', 'rows', 'buttonScale', 'marginY', 'marginX', 'buttonFontSize', 'barMaxHeight'];
+const PRESET_EXTRA_FIELDS = ['buttonStyles', 'buttonOrder', 'foldedButtons', 'foldEnabled', 'foldGap', 'foldGapY', 'foldButtonScale', 'foldButtonIcon', 'foldButtonColor'];
+
 
 let _confirmCallback = null;
 
@@ -37,12 +43,19 @@ function loadSettings() {
     if (s.foldedButtons === undefined) s.foldedButtons = null;
     if (s.foldEnabled === undefined) s.foldEnabled = true;
     if (s.foldGap === undefined) s.foldGap = 2;
+    if (s.foldGapY === undefined) s.foldGapY = 2;
+    if (s.foldButtonScale === undefined) s.foldButtonScale = 100;
+    if (s.foldButtonIcon === undefined) s.foldButtonIcon = 'fa-mosaic fa-solid fa-house';
+    if (s.foldButtonColor === undefined) s.foldButtonColor = '';
     return s;
 }
 
 function getLayoutSnapshot(s) {
     const out = {};
     for (const f of LAYOUT_FIELDS) out[f] = s[f];
+    for (const f of PRESET_EXTRA_FIELDS) {
+        out[f] = s[f] ? JSON.parse(JSON.stringify(s[f])) : s[f];
+    }
     return out;
 }
 
@@ -50,9 +63,20 @@ function applyLayoutToSettings(s, data) {
     for (const f of LAYOUT_FIELDS) {
         if (data[f] !== undefined) s[f] = data[f];
     }
+    for (const f of PRESET_EXTRA_FIELDS) {
+        if (data[f] !== undefined) {
+            s[f] = JSON.parse(JSON.stringify(data[f]));
+        } else {
+            // 旧预设没有这些字段时，重置为默认值，确保隔离
+            if (f === 'buttonStyles') s[f] = {};
+            else if (f === 'buttonOrder') s[f] = [];
+            else if (f === 'foldedButtons') s[f] = null;
+        }
+    }
 }
 
 function applySettings() {
+    _isApplying = true;
     const s = loadSettings();
     const root = document.documentElement;
     if (s.enabled) {
@@ -93,9 +117,11 @@ function applySettings() {
         root.style.removeProperty('--qrl-bar-max-height');
         removeCustomContainer();
     }
+    _isApplying = false;
 }
 
 let _qrObserver = null;
+let _isApplying = false;
 
 function syncCustomButtons() {
     const sendForm = document.getElementById('send_form');
@@ -112,19 +138,18 @@ function syncCustomButtons() {
     
     const qrBar = document.getElementById('qr--bar');
     const qrPopout = document.getElementById('qr--popout');
-    if (qrBar) qrBar.style.display = 'none';
-    if (qrPopout) qrPopout.style.display = 'none';
     
     collectNewButtons();
     
     if (_qrObserver) _qrObserver.disconnect();
     _qrObserver = new MutationObserver(() => {
+        if (_isApplying) return;
         clearTimeout(_qrObserver._timer);
         _qrObserver._timer = setTimeout(() => {
             if (loadSettings().enabled) {
                 collectNewButtons();
             }
-        }, 200);
+        }, 300);
     });
     if (qrBar) _qrObserver.observe(qrBar, { childList: true, subtree: true });
     if (qrPopout) _qrObserver.observe(qrPopout, { childList: true, subtree: true });
@@ -134,18 +159,24 @@ function collectNewButtons() {
     const customContainer = document.getElementById('qrl-custom-buttons');
     if (!customContainer) return;
     
+    _isApplying = true;
+    let hasNew = false;
     const allButtons = document.querySelectorAll('#qr--bar .qr--button, #qr--popout .qr--button');
     allButtons.forEach(btn => {
         if (!btn.closest('#qrl-custom-buttons')) {
             customContainer.appendChild(btn);
+            hasNew = true;
         }
     });
     
     ensureFoldButton();
     applyFoldState();
-    applyButtonOrder();
-    applyButtonStyles();
-    applyGridCols();
+    if (hasNew) {
+        applyButtonOrder();
+        applyButtonStyles();
+        applyGridCols();
+    }
+    _isApplying = false;
 }
 
 let _foldButton = null;
@@ -153,8 +184,6 @@ let _foldPopup = null;
 let _foldDocHandler = null;
 
 function ensureFoldButton() {
-    const container = document.getElementById('qrl-custom-buttons');
-    if (!container) return;
     const s = loadSettings();
     
     if (!s.foldEnabled) {
@@ -165,8 +194,7 @@ function ensureFoldButton() {
     
     if (!_foldButton) {
         _foldButton = document.createElement('div');
-        _foldButton.className = 'qr--button menu_button qrl-fold-btn';
-        _foldButton.innerHTML = '<div class="qr--button-icon fa-mosaic fa-solid fa-house"></div>';
+        _foldButton.className = 'qrl-fold-btn';
         _foldButton.title = '折叠按钮';
         _foldButton.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -174,8 +202,19 @@ function ensureFoldButton() {
         });
     }
     
-    if (!container.querySelector('.qrl-fold-btn')) {
-        container.appendChild(_foldButton);
+    _foldButton.innerHTML = `<i class="${s.foldButtonIcon}"></i>`;
+    _foldButton.style.setProperty('font-size', `${s.foldButtonScale * 0.252}px`, 'important');
+    if (s.foldButtonColor) _foldButton.style.setProperty('color', s.foldButtonColor, 'important');
+    else _foldButton.style.removeProperty('color');
+    
+    const rightSendForm = document.getElementById('rightSendForm');
+    const sendBut = document.getElementById('send_but');
+    if (rightSendForm && !_foldButton.parentElement) {
+        if (sendBut) {
+            rightSendForm.insertBefore(_foldButton, sendBut);
+        } else {
+            rightSendForm.appendChild(_foldButton);
+        }
     }
     
     if (!_foldPopup) {
@@ -210,9 +249,19 @@ function openFoldPopup() {
         foldedBtns.forEach(btn => {
             const clone = btn.cloneNode(true);
             clone.style.display = '';
+            clone.style.removeProperty('transform');
+            clone.style.removeProperty('font-size');
             clone.addEventListener('click', (e) => {
                 e.stopPropagation();
+                const oldName = getButtonName(btn);
                 btn.click();
+                const newName = getButtonName(btn);
+                if (oldName !== newName) {
+                    const idx = s.foldedButtons.indexOf(oldName);
+                    if (idx !== -1) s.foldedButtons.splice(idx, 1);
+                    if (!s.foldedButtons.includes(newName)) s.foldedButtons.push(newName);
+                    saveSettingsDebounced();
+                }
                 closeFoldPopup();
             });
             _foldPopup.appendChild(clone);
@@ -225,12 +274,12 @@ function openFoldPopup() {
         const rect = _foldButton.getBoundingClientRect();
         const container = document.getElementById('qrl-custom-buttons');
         const containerRect = container ? container.getBoundingClientRect() : null;
-        const width = containerRect ? containerRect.width - 4 : window.innerWidth - 40;
-        _foldPopup.style.width = width + 'px';
-        _foldPopup.style.maxWidth = width + 'px';
-        _foldPopup.style.minWidth = '80px';
+        const maxWidth = containerRect ? containerRect.width - 4 : window.innerWidth - 40;
+        _foldPopup.style.width = 'max-content';
+        _foldPopup.style.maxWidth = maxWidth + 'px';
+        _foldPopup.style.minWidth = '0';
         const popupRect = _foldPopup.getBoundingClientRect();
-        let left = containerRect ? containerRect.right - width : rect.right - width;
+        let left = containerRect ? containerRect.right - popupRect.width : rect.right - popupRect.width;
         let top = rect.top - popupRect.height - 4;
         if (top < 0) top = rect.bottom + 4;
         _foldPopup.style.left = left + 'px';
@@ -265,8 +314,10 @@ function applyFoldState() {
     });
     
     if (_foldButton && s.foldEnabled) {
-        _foldButton.style.setProperty('transform', `scale(${s.buttonScale / 100 * 1.3})`, 'important');
-        _foldButton.style.setProperty('font-size', s.buttonFontSize, 'important');
+        _foldButton.style.setProperty('font-size', `${s.foldButtonScale * 0.252}px`, 'important');
+        _foldButton.innerHTML = `<i class="${s.foldButtonIcon}"></i>`;
+        if (s.foldButtonColor) _foldButton.style.setProperty('color', s.foldButtonColor, 'important');
+        else _foldButton.style.removeProperty('color');
     }
 }
 
@@ -285,16 +336,26 @@ function renderFoldList() {
         return;
     }
     
-    uniqueNames.forEach(name => {
+    const grid = document.createElement('div');
+    grid.className = 'qrl-fold-grid';
+    
+    uniqueNames.forEach((name, i) => {
         const isFolded = s.foldedButtons && s.foldedButtons.includes(name);
         const label = document.createElement('label');
         label.className = 'checkbox_label qrl-fold-item';
         label.innerHTML = `<input type="checkbox" ${isFolded ? 'checked' : ''}> <span>${name}</span>`;
         const checkbox = label.querySelector('input');
-            checkbox.addEventListener('change', () => {
+        checkbox.addEventListener('change', () => {
             if (!s.foldedButtons) s.foldedButtons = [];
             if (checkbox.checked && !s.foldedButtons.includes(name)) {
                 s.foldedButtons.push(name);
+                if (s.buttonStyles && s.buttonStyles[name]) {
+                    const keepColor = s.buttonStyles[name].color || '';
+                    const keepBold = s.buttonStyles[name].bold || false;
+                    s.buttonStyles[name] = {};
+                    if (keepColor) s.buttonStyles[name].color = keepColor;
+                    if (keepBold) s.buttonStyles[name].bold = true;
+                }
             } else if (!checkbox.checked) {
                 s.foldedButtons = s.foldedButtons.filter(n => n !== name);
             }
@@ -302,8 +363,10 @@ function renderFoldList() {
             applyButtonStyles();
             saveSettingsDebounced();
         });
-        listContainer.appendChild(label);
+        grid.appendChild(label);
     });
+    
+    listContainer.appendChild(grid);
 }
 
 function applyGridCols() {
@@ -370,6 +433,17 @@ function applyButtonOrder() {
         if (bIdx === -1) return -1;
         return aIdx - bIdx;
     });
+    
+    let needsReorder = false;
+    for (let i = 0; i < allButtons.length; i++) {
+        if (allButtons[i].nextElementSibling !== allButtons[i + 1] || 
+            (i === allButtons.length - 1 && allButtons[i].nextElementSibling !== container.querySelector('.qrl-fold-btn'))) {
+            needsReorder = true;
+            break;
+        }
+    }
+    if (!needsReorder) return;
+    
     allButtons.forEach(btn => container.appendChild(btn));
     
     const foldBtn = container.querySelector('.qrl-fold-btn');
@@ -383,6 +457,8 @@ function applyButtonStyles() {
     const container = document.getElementById('qrl-custom-buttons');
     if (!container) return;
     
+    const scale = s.buttonScale / 100;
+    
     container.querySelectorAll('.qr--button').forEach(btn => {
         if (btn.classList.contains('qrl-fold-btn')) return;
         const name = getButtonName(btn);
@@ -394,6 +470,9 @@ function applyButtonStyles() {
         } else {
             btn.style.removeProperty('font-size');
         }
+        const tx = (st && st.marginX) ? st.marginX : 0;
+        const ty = (st && st.marginY) ? st.marginY : 0;
+        btn.style.setProperty('transform', `translate(${tx}px, ${ty}px) scale(${scale})`, 'important');
         if (st) {
             if (st.color) btn.style.setProperty('color', st.color, 'important');
             else btn.style.removeProperty('color');
@@ -406,8 +485,10 @@ function applyButtonStyles() {
     });
     
     if (_foldButton && s.foldEnabled) {
-        _foldButton.style.setProperty('transform', `scale(${s.buttonScale / 100 * 1.3})`, 'important');
-        _foldButton.style.setProperty('font-size', s.buttonFontSize, 'important');
+        _foldButton.style.setProperty('font-size', `${s.foldButtonScale * 0.252}px`, 'important');
+        _foldButton.innerHTML = `<i class="${s.foldButtonIcon}"></i>`;
+        if (s.foldButtonColor) _foldButton.style.setProperty('color', s.foldButtonColor, 'important');
+        else _foldButton.style.removeProperty('color');
     }
 }
 
@@ -415,6 +496,7 @@ function applySingleButtonStyle(name) {
     const s = loadSettings();
     if (!s.enabled) return;
     const st = s.buttonStyles ? s.buttonStyles[name] : null;
+    const scale = s.buttonScale / 100;
     const allBtns = document.querySelectorAll('#qrl-custom-buttons .qr--button');
     allBtns.forEach(btn => {
         if (getButtonName(btn) !== name) return;
@@ -430,6 +512,9 @@ function applySingleButtonStyle(name) {
             }
             if (st.bold) btn.style.setProperty('font-weight', 'bold', 'important');
             else btn.style.removeProperty('font-weight');
+            const tx = st.marginX || 0;
+            const ty = st.marginY || 0;
+        btn.style.setProperty('transform', `translate(${tx}px, ${ty}px) scale(${scale})`, 'important');
         }
     });
     refreshFoldPopupClones();
@@ -488,6 +573,10 @@ function fullReset() {
     s.foldedButtons = [];
     s.foldEnabled = true;
     s.foldGap = 2;
+    s.foldGapY = 2;
+    s.foldButtonScale = 100;
+    s.foldButtonIcon = 'fa-mosaic fa-solid fa-house';
+    s.foldButtonColor = '';
     applySettings();
     loadPanelValues();
     syncGridGroup();
@@ -564,9 +653,8 @@ function createFloatingPanel() {
 
         <hr>
 
-        <div class="qrl-section-label">排列方式</div>
         <label>
-            布局模式:
+            排列方式:
             <select id="qrl-layout-mode" class="text_pole qrl-input-third">
                 <option value="grid">行数</option>
                 <option value="flex">弹性换行</option>
@@ -584,9 +672,8 @@ function createFloatingPanel() {
 
         <hr>
 
-        <div class="qrl-section-label">按钮尺寸</div>
-        <label>大小:
-            <span class="qrl-range-val" id="qrl-btn-scale-value">100</span>%
+        <label>按钮尺寸:
+            <input type="text" class="qrl-range-input" id="qrl-btn-scale-input" value="100" data-suffix="%" style="width:52px;">
             <input type="range" id="qrl-btn-scale" min="50" max="150" value="100" class="range_slider">
             <button class="qrl-slider-reset" data-target="qrl-btn-scale" data-default="100">重置</button>
         </label>
@@ -594,15 +681,14 @@ function createFloatingPanel() {
 
         <hr>
 
-        <div class="qrl-section-label">边距</div>
-        <label>按钮上下间距:
-            <span class="qrl-range-val" id="qrl-margin-y-value">5</span>px
+        <label>上下间距:
+            <input type="text" class="qrl-range-input" id="qrl-margin-y-input" value="5" data-suffix="px" style="width:52px;">
             <input type="range" id="qrl-margin-y" min="-50" max="50" value="5" class="range_slider">
             <button class="qrl-slider-reset" data-target="qrl-margin-y" data-default="5">重置</button>
         </label>
         <div class="qrl-desc">按钮上下的间距，负值靠近，正值远离</div>
-        <label>按钮左右间距:
-            <span class="qrl-range-val" id="qrl-margin-x-value">5</span>px
+        <label>左右间距:
+            <input type="text" class="qrl-range-input" id="qrl-margin-x-input" value="5" data-suffix="px" style="width:52px;">
             <input type="range" id="qrl-margin-x" min="-50" max="50" value="5" class="range_slider">
             <button class="qrl-slider-reset" data-target="qrl-margin-x" data-default="5">重置</button>
         </label>
@@ -626,15 +712,39 @@ function createFloatingPanel() {
         </label>
         <div class="qrl-collapsible">
             <div class="qrl-collapsible-header" id="qrl-fold-toggle">
-                <span>折叠按钮设置</span>
+                <span>折叠按钮</span>
                 <span class="qrl-collapse-icon">▼</span>
             </div>
             <div class="qrl-collapsible-content" id="qrl-fold-content">
                 <div class="qrl-desc">勾选的按钮将折叠到弹窗列表中，取消勾选放回QR栏</div>
-                <label>折叠按钮间距:
+                <label>大小:
+                    <span class="qrl-range-val" id="qrl-fold-btn-scale-value">100</span>%
+                    <input type="range" id="qrl-fold-btn-scale" min="50" max="200" value="100" class="range_slider">
+                    <button class="qrl-slider-reset" data-target="qrl-fold-btn-scale" data-default="100">重置</button>
+                </label>
+                <label>图标:
+                    <select id="qrl-fold-btn-icon" class="text_pole qrl-input-third">
+                        <option value="fa-mosaic fa-solid fa-house">🏠 默认房屋</option>
+                        <option value="fa-mosaic fa-solid fa-moon">🌙 月亮</option>
+                        <option value="fa-mosaic fa-solid fa-star">⭐ 星星</option>
+                        <option value="fa-pixel fa-regular fa-bolt">⚡ 闪电</option>
+                        <option value="fa-pixel fa-regular fa-layer-group">📚 图层</option>
+                        <option value="fa-pixel fa-regular fa-snowflake">❄ 雪花</option>
+                        <option value="fa-pixel fa-regular fa-tree">🎄 树</option>
+                    </select>
+                    &nbsp;&nbsp;&nbsp;&nbsp;颜色:
+                    <input type="color" id="qrl-fold-btn-color" value="" style="width:28px;height:22px;border:none;padding:0;cursor:pointer;vertical-align:middle;">
+                    <button class="qrl-slider-reset" id="qrl-fold-btn-color-reset">默认</button>
+                </label>
+                <label>左右间距:
                     <span class="qrl-range-val" id="qrl-fold-gap-value">2</span>px
-                    <input type="range" id="qrl-fold-gap" min="0" max="20" value="2" class="range_slider">
+                    <input type="range" id="qrl-fold-gap" min="0" max="30" value="2" class="range_slider">
                     <button class="qrl-slider-reset" data-target="qrl-fold-gap" data-default="2">重置</button>
+                </label>
+                <label>上下间距:
+                    <span class="qrl-range-val" id="qrl-fold-gap-y-value">2</span>px
+                    <input type="range" id="qrl-fold-gap-y" min="0" max="30" value="2" class="range_slider">
+                    <button class="qrl-slider-reset" data-target="qrl-fold-gap-y" data-default="2">重置</button>
                 </label>
                 <div class="qrl-desc">弹窗内按钮之间的间距</div>
                 <button class="qrl-refresh-btn" id="qrl-fold-refresh">捕获并折叠全部按钮</button>
@@ -646,7 +756,7 @@ function createFloatingPanel() {
 
         <div class="qrl-collapsible">
             <div class="qrl-collapsible-header" id="qrl-color-toggle">
-                <span>颜色位置修改</span>
+                <span>按钮颜色位置</span>
                 <span class="qrl-collapse-icon">▼</span>
             </div>
             <div class="qrl-collapsible-content" id="qrl-color-content">
@@ -673,8 +783,11 @@ function makeDraggable(panel) {
         if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
         e.preventDefault();
         dragging = true;
-        ox = e.clientX - panel.offsetLeft;
-        oy = e.clientY - panel.offsetTop;
+        const rect = panel.getBoundingClientRect();
+        ox = e.clientX - rect.left;
+        oy = e.clientY - rect.top;
+        panel.style.left = rect.left + 'px';
+        panel.style.top = rect.top + 'px';
         panel.style.right = 'auto';
         panel.style.userSelect = 'none';
     });
@@ -701,13 +814,11 @@ function togglePanel(forceShow) {
     const show = forceShow !== undefined ? forceShow : !panel.classList.contains('qrl-visible');
     if (show) {
         panel.classList.add('qrl-visible');
-        panel.style.display = 'block';
         loadPanelValues();
         syncGridGroup();
         renderFoldList();
     } else {
         panel.classList.remove('qrl-visible');
-        panel.style.display = 'none';
     }
 }
 
@@ -733,6 +844,28 @@ function bindPanelEvents() {
         saveAndApply();
         renderFoldList();
     });
+    $('qrl-fold-btn-scale')?.addEventListener('input', function () {
+        $('qrl-fold-btn-scale-value').textContent = this.value;
+        loadSettings().foldButtonScale = Number(this.value);
+        if (_foldButton) _foldButton.style.setProperty('font-size', `${this.value * 0.252}px`, 'important');
+        saveSettingsDebounced();
+    });
+    $('qrl-fold-btn-icon')?.addEventListener('change', function () {
+        loadSettings().foldButtonIcon = this.value;
+        if (_foldButton) _foldButton.innerHTML = `<i class="${this.value}"></i>`;
+        saveSettingsDebounced();
+    });
+    $('qrl-fold-btn-color')?.addEventListener('input', function () {
+        loadSettings().foldButtonColor = this.value;
+        if (_foldButton) _foldButton.style.setProperty('color', this.value, 'important');
+        saveSettingsDebounced();
+    });
+    $('qrl-fold-btn-color-reset')?.addEventListener('click', function () {
+        loadSettings().foldButtonColor = '';
+        $('qrl-fold-btn-color').value = '';
+        if (_foldButton) _foldButton.style.removeProperty('color');
+        saveSettingsDebounced();
+    });
     $('qrl-layout-mode')?.addEventListener('change', function () {
         loadSettings().layoutMode = this.value;
         syncGridGroup();
@@ -744,24 +877,33 @@ function bindPanelEvents() {
         applySettings();
         saveSettingsDebounced();
     });
-    $('qrl-margin-y')?.addEventListener('input', function () {
-        $('qrl-margin-y-value').textContent = this.value;
-        loadSettings().marginY = Number(this.value);
-        applySettings();
-        saveSettingsDebounced();
-    });
-    $('qrl-margin-x')?.addEventListener('input', function () {
-        $('qrl-margin-x-value').textContent = this.value;
-        loadSettings().marginX = Number(this.value);
-        applySettings();
-        saveSettingsDebounced();
-    });
-    $('qrl-btn-scale')?.addEventListener('input', function () {
-        $('qrl-btn-scale-value').textContent = this.value;
-        loadSettings().buttonScale = Number(this.value);
-        applySettings();
-        saveSettingsDebounced();
-    });
+
+    function bindSliderInput(sliderId, inputId, settingKey, applyFn) {
+        const slider = $(sliderId);
+        const input = $(inputId);
+        if (!slider || !input) return;
+        slider.addEventListener('input', function () {
+            input.value = this.value;
+            loadSettings()[settingKey] = Number(this.value);
+            applyFn();
+            saveSettingsDebounced();
+        });
+        input.addEventListener('change', function () {
+            let v = parseFloat(this.value);
+            if (isNaN(v)) return;
+            const min = parseFloat(slider.min), max = parseFloat(slider.max);
+            v = Math.max(min, Math.min(max, v));
+            this.value = String(Math.round(v * 10) / 10);
+            slider.value = Math.round(v);
+            loadSettings()[settingKey] = v;
+            applyFn();
+            saveSettingsDebounced();
+        });
+    }
+
+    bindSliderInput('qrl-btn-scale', 'qrl-btn-scale-input', 'buttonScale', applySettings);
+    bindSliderInput('qrl-margin-y', 'qrl-margin-y-input', 'marginY', applySettings);
+    bindSliderInput('qrl-margin-x', 'qrl-margin-x-input', 'marginX', applySettings);
 
     const fieldMap = {
         'qrl-btn-font-size': 'buttonFontSize',
@@ -788,6 +930,12 @@ function bindPanelEvents() {
         applyFoldGap();
         saveSettingsDebounced();
     });
+    $('qrl-fold-gap-y')?.addEventListener('input', function () {
+        $('qrl-fold-gap-y-value').textContent = this.value;
+        loadSettings().foldGapY = Number(this.value);
+        applyFoldGap();
+        saveSettingsDebounced();
+    });
     $('qrl-fold-refresh')?.addEventListener('click', () => {
         const s = loadSettings();
         s.foldedButtons = Array.from(document.querySelectorAll('#qrl-custom-buttons .qr--button:not(.qrl-fold-btn)'))
@@ -804,6 +952,8 @@ function bindPanelEvents() {
             if (!input) return;
             input.value = value;
             input.dispatchEvent(new Event('input', { bubbles: true }));
+            const companion = document.getElementById(target + '-input');
+            if (companion) companion.value = value;
         });
     });
 }
@@ -813,19 +963,41 @@ function bindCollapsibleEvents() {
     const content = document.getElementById('qrl-color-content');
     if (!toggle || !content) return;
     toggle.addEventListener('click', () => {
-        const isHidden = content.style.display === 'none' || !content.style.display;
-        content.style.display = isHidden ? 'block' : 'none';
-        toggle.querySelector('.qrl-collapse-icon').textContent = isHidden ? '▲' : '▼';
-        if (isHidden) refreshButtonList();
+        const isHidden = !content.classList.contains('qrl-expanded');
+        if (isHidden) {
+            refreshButtonList();
+            setTimeout(() => {
+                const h = content.scrollHeight + 20;
+                content.style.setProperty('--qrl-expand-h', h + 'px');
+                requestAnimationFrame(() => {
+                    content.classList.add('qrl-expanded');
+                    toggle.querySelector('.qrl-collapse-icon').textContent = '▲';
+                });
+            }, 50);
+        } else {
+            content.classList.remove('qrl-expanded');
+            toggle.querySelector('.qrl-collapse-icon').textContent = '▼';
+        }
     });
     const foldToggle = document.getElementById('qrl-fold-toggle');
     const foldContent = document.getElementById('qrl-fold-content');
     if (foldToggle && foldContent) {
         foldToggle.addEventListener('click', () => {
-            const isHidden = foldContent.style.display === 'none' || !foldContent.style.display;
-            foldContent.style.display = isHidden ? 'block' : 'none';
-            foldToggle.querySelector('.qrl-collapse-icon').textContent = isHidden ? '▲' : '▼';
-            if (isHidden) renderFoldList();
+            const isHidden = !foldContent.classList.contains('qrl-expanded');
+            if (isHidden) {
+                renderFoldList();
+                requestAnimationFrame(() => {
+                    const h = foldContent.scrollHeight + 20;
+                    foldContent.style.setProperty('--qrl-expand-h', h + 'px');
+                    requestAnimationFrame(() => {
+                        foldContent.classList.add('qrl-expanded');
+                        foldToggle.querySelector('.qrl-collapse-icon').textContent = '▲';
+                    });
+                });
+            } else {
+                foldContent.classList.remove('qrl-expanded');
+                foldToggle.querySelector('.qrl-collapse-icon').textContent = '▼';
+            }
         });
     }
 }
@@ -834,7 +1006,8 @@ function applyFoldGap() {
     const s = loadSettings();
     const popup = document.getElementById('qrl-fold-popup');
     if (popup) {
-        popup.style.gap = s.foldGap + 'px';
+        popup.style.columnGap = s.foldGap + 'px';
+        popup.style.rowGap = (s.foldGapY ?? 2) + 'px';
     }
 }
 
@@ -958,21 +1131,30 @@ function createButtonItem(name, style, scriptName = 'unknown') {
     const defaultFontSize = getButtonDefaultFontSize(name);
     const currentColor = style.color || defaultColor;
     const currentFontSize = (style.fontSize !== undefined && style.fontSize > 0) ? style.fontSize : defaultFontSize;
+    const currentMarginY = style.marginY || 0;
+    const currentMarginX = style.marginX || 0;
     div.innerHTML = `
-        <span class="qrl-drag-handle">☰</span>
-        <span class="qrl-btn-name" title="${name}">${name}</span>
-        <span class="qrl-script-tag">[${scriptName}]</span>
-        <div class="qrl-btn-controls">
-            <span>字色</span><input type="color" class="qrl-clr-font" value="${currentColor}">
-            <span>字号</span><input type="number" class="qrl-font-size" min="8" max="32" value="${currentFontSize}">px
-            <label><input type="checkbox" class="qrl-bold" ${style.bold ? 'checked' : ''}>粗</label>
+        <div class="qrl-item-row1">
+            <span class="qrl-drag-handle">☰</span>
+            <span class="qrl-btn-name" title="${name}">${name}</span>
+            <button class="qrl-reset-btn">重置</button>
         </div>
-        <button class="qrl-reset-btn">重置</button>
+        <div class="qrl-item-row2">
+            <label class="qrl-field"><span>字色</span><input type="color" class="qrl-clr-font" value="${currentColor}"></label>
+            <label class="qrl-field"><span>字号</span><input type="number" class="qrl-font-size" min="8" max="32" value="${currentFontSize}"></label>
+            <label class="qrl-field qrl-field-check"><input type="checkbox" class="qrl-bold" ${style.bold ? 'checked' : ''}><span>粗</span></label>
+        </div>
+        <div class="qrl-item-row3">
+            <label class="qrl-field"><span>上下移动</span><input type="number" class="qrl-offset-y" value="${currentMarginY}" step="1"></label>
+            <label class="qrl-field"><span>左右移动</span><input type="number" class="qrl-offset-x" value="${currentMarginX}" step="1"></label>
+        </div>
     `;
 
     const fontInput = div.querySelector('.qrl-clr-font');
     const fontSizeInput = div.querySelector('.qrl-font-size');
     const boldInput = div.querySelector('.qrl-bold');
+    const offsetYInput = div.querySelector('.qrl-offset-y');
+    const offsetXInput = div.querySelector('.qrl-offset-x');
     const resetBtn = div.querySelector('.qrl-reset-btn');
 
     const updateStyle = () => {
@@ -981,7 +1163,9 @@ function createButtonItem(name, style, scriptName = 'unknown') {
         s.buttonStyles[name] = {
             color: fontInput.value,
             fontSize: Number(fontSizeInput.value),
-            bold: boldInput.checked
+            bold: boldInput.checked,
+            marginY: Number(offsetYInput.value) || 0,
+            marginX: Number(offsetXInput.value) || 0,
         };
         applySingleButtonStyle(name);
         saveSettingsDebounced();
@@ -990,21 +1174,36 @@ function createButtonItem(name, style, scriptName = 'unknown') {
     fontInput.addEventListener('change', updateStyle);
     fontSizeInput.addEventListener('change', updateStyle);
     boldInput.addEventListener('change', updateStyle);
+    offsetYInput.addEventListener('change', updateStyle);
+    offsetXInput.addEventListener('change', updateStyle);
 
     resetBtn.addEventListener('click', () => {
         if (s.buttonStyles) delete s.buttonStyles[name];
         fontInput.value = defaultColor;
         fontSizeInput.value = defaultFontSize;
         boldInput.checked = false;
+        offsetYInput.value = 0;
+        offsetXInput.value = 0;
         const allBtns = document.querySelectorAll('#qrl-custom-buttons .qr--button');
+        const scale = s.buttonScale / 100;
         allBtns.forEach(btn => {
             if (getButtonName(btn) !== name) return;
             btn.style.removeProperty('color');
             btn.style.removeProperty('font-size');
             btn.style.removeProperty('font-weight');
+            btn.style.setProperty('transform', `scale(${scale})`, 'important');
         });
         saveSettingsDebounced();
     });
+
+    const isFolded = s.foldedButtons && s.foldedButtons.includes(name);
+    if (isFolded) {
+        [fontSizeInput, offsetYInput, offsetXInput].forEach(el => {
+            el.disabled = true;
+            el.style.opacity = '0.4';
+            el.style.cursor = 'not-allowed';
+        });
+    }
 
     return div;
 }
@@ -1013,7 +1212,68 @@ function setupDragAndDrop(container) {
     const items = Array.from(container.querySelectorAll('.qrl-btn-item'));
     let dragSrc = null;
     let pressTimer = null;
-    
+    let dragging = false;
+    let ghost = null;
+    let overItem = null;
+    let autoScrollRaf = null;
+    let autoScrollSpeed = 0;
+    let autoScrollTarget = null;
+    let autoScrollBounds = null;
+    const BASE_SPEED = 3;
+    const MAX_EXTRA = 3;
+    const EDGE_ZONE = 30;
+
+    const stopAutoScroll = () => {
+        autoScrollSpeed = 0;
+        autoScrollTarget = null;
+        autoScrollBounds = null;
+        if (autoScrollRaf) { cancelAnimationFrame(autoScrollRaf); autoScrollRaf = null; }
+    };
+
+    const getScrollPos = (el, ctn) => {
+        return el.getBoundingClientRect().top - ctn.getBoundingClientRect().top + ctn.scrollTop;
+    };
+
+    const getHeaderHeight = (ctn) => {
+        const header = ctn.querySelector('#qrl-panel-header');
+        return header ? header.offsetHeight : 0;
+    };
+
+    const tickAutoScroll = () => {
+        if (!autoScrollTarget || autoScrollSpeed === 0) { autoScrollRaf = null; return; }
+        if (!autoScrollBounds) { autoScrollRaf = null; return; }
+        const headerH = getHeaderHeight(autoScrollTarget);
+        const sTop = getScrollPos(autoScrollBounds.start, autoScrollTarget) - headerH;
+        const eBottom = getScrollPos(autoScrollBounds.end, autoScrollTarget) + autoScrollBounds.end.offsetHeight;
+        const minScroll = Math.max(0, sTop);
+        const maxScroll = eBottom - autoScrollTarget.clientHeight;
+        const newScroll = autoScrollTarget.scrollTop + autoScrollSpeed;
+        const clamped = Math.max(0, Math.max(minScroll, Math.min(maxScroll, newScroll)));
+        if (clamped === autoScrollTarget.scrollTop) { stopAutoScroll(); return; }
+        autoScrollTarget.scrollTop = clamped;
+        autoScrollRaf = requestAnimationFrame(tickAutoScroll);
+    };
+
+    const startAutoScroll = (target, bounds, speed) => {
+        autoScrollTarget = target;
+        autoScrollBounds = bounds;
+        autoScrollSpeed = speed;
+        if (!autoScrollRaf) autoScrollRaf = requestAnimationFrame(tickAutoScroll);
+    };
+
+    const getGroupBounds = (item) => {
+        let el = item;
+        while (el && el.parentElement !== container) el = el.parentElement;
+        let start = el, end = el;
+        while (start.previousElementSibling && !start.previousElementSibling.classList.contains('qrl-group-header')) {
+            start = start.previousElementSibling;
+        }
+        while (end.nextElementSibling && !end.nextElementSibling.classList.contains('qrl-group-header')) {
+            end = end.nextElementSibling;
+        }
+        return { start, end };
+    };
+
     const getGroup = (item) => {
         let el = item;
         while (el) {
@@ -1025,66 +1285,124 @@ function setupDragAndDrop(container) {
         return '';
     };
 
+    const clearOverClasses = () => {
+        container.querySelectorAll('.qrl-drag-before, .qrl-drag-after').forEach(el => {
+            el.classList.remove('qrl-drag-before', 'qrl-drag-after');
+        });
+    };
+
+    const findItemAt = (x, y) => {
+        const els = document.elementsFromPoint(x, y);
+        for (const el of els) {
+            const item = el.closest('.qrl-btn-item');
+            if (item && item !== dragSrc && container.contains(item)) return item;
+        }
+        return null;
+    };
+
+    const endDrag = () => {
+        if (!dragging) return;
+        dragging = false;
+        clearTimeout(pressTimer);
+        if (dragSrc) dragSrc.classList.remove('qrl-dragging');
+        if (ghost) { ghost.remove(); ghost = null; }
+        clearOverClasses();
+        stopAutoScroll();
+        if (overItem && dragSrc && getGroup(dragSrc) === getGroup(overItem)) {
+            const rect = overItem.getBoundingClientRect();
+            const midpoint = rect.top + rect.height / 2;
+            const lastPointerY = ghost ? parseFloat(ghost.dataset.py || '0') : 0;
+            const insertBefore = lastPointerY < midpoint;
+            insertItem(dragSrc, overItem, insertBefore);
+        }
+        dragSrc = null;
+        overItem = null;
+    };
+
     items.forEach(item => {
-        item.addEventListener('mousedown', (e) => {
+        item.addEventListener('pointerdown', (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'LABEL') return;
-            item.draggable = false;
+            if (e.button !== 0) return;
             pressTimer = setTimeout(() => {
-                item.draggable = true;
+                dragging = true;
+                dragSrc = item;
+                item.classList.add('qrl-dragging');
+                ghost = document.createElement('div');
+                ghost.className = 'qrl-drag-ghost';
+                ghost.textContent = item.dataset.name || '?';
+                ghost.dataset.py = e.clientY;
+                ghost.style.left = e.clientX + 10 + 'px';
+                ghost.style.top = e.clientY - 10 + 'px';
+                document.body.appendChild(ghost);
             }, 400);
         });
 
-        item.addEventListener('mouseup', () => {
-            clearTimeout(pressTimer);
-            setTimeout(() => { item.draggable = false; }, 50);
-        });
-
-        item.addEventListener('mouseleave', () => {
+        item.addEventListener('pointerup', () => {
             clearTimeout(pressTimer);
         });
 
-        item.addEventListener('dragstart', (e) => {
-            dragSrc = item;
-            item.classList.add('qrl-dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', item.dataset.name);
-        });
-
-        item.addEventListener('dragend', () => {
-            item.classList.remove('qrl-dragging');
-            item.draggable = false;
-        });
-
-        item.addEventListener('dragover', (e) => {
-            if (!dragSrc || dragSrc === item) return;
-            if (getGroup(dragSrc) !== getGroup(item)) return;
-            e.preventDefault();
-            const rect = item.getBoundingClientRect();
-            const midpoint = rect.top + rect.height / 2;
-            item.classList.remove('qrl-drag-before', 'qrl-drag-after');
-            if (e.clientY < midpoint) {
-                item.classList.add('qrl-drag-before');
-            } else {
-                item.classList.add('qrl-drag-after');
-            }
-        });
-
-        item.addEventListener('dragleave', () => {
-            item.classList.remove('qrl-drag-before', 'qrl-drag-after');
-        });
-
-        item.addEventListener('drop', (e) => {
-            e.preventDefault();
-            const rect = item.getBoundingClientRect();
-            const midpoint = rect.top + rect.height / 2;
-            const insertBefore = e.clientY < midpoint;
-            item.classList.remove('qrl-drag-before', 'qrl-drag-after');
-            if (dragSrc && dragSrc !== item && getGroup(dragSrc) === getGroup(item)) {
-                insertItem(dragSrc, item, insertBefore);
-            }
-            dragSrc = null;
+        item.addEventListener('pointerleave', () => {
+            clearTimeout(pressTimer);
         });
     });
+
+    document.addEventListener('pointermove', (e) => {
+        if (!dragging || !dragSrc) return;
+        if (ghost) {
+            ghost.style.left = e.clientX + 10 + 'px';
+            ghost.style.top = e.clientY - 10 + 'px';
+            ghost.dataset.py = e.clientY;
+        }
+        clearOverClasses();
+        overItem = findItemAt(e.clientX, e.clientY);
+        if (overItem && getGroup(dragSrc) === getGroup(overItem)) {
+            const rect = overItem.getBoundingClientRect();
+            const midpoint = rect.top + rect.height / 2;
+            if (e.clientY < midpoint) {
+                overItem.classList.add('qrl-drag-before');
+            } else {
+                overItem.classList.add('qrl-drag-after');
+            }
+        }
+        const panel = document.getElementById('qrl-panel');
+        if (panel) {
+            const bounds = dragSrc ? getGroupBounds(dragSrc) : null;
+            const panelRect = panel.getBoundingClientRect();
+            let speed = 0;
+            if (bounds) {
+                const headerH = getHeaderHeight(panel);
+                const groupTop = getScrollPos(bounds.start, panel) - headerH;
+                const groupBottom = getScrollPos(bounds.end, panel) + bounds.end.offsetHeight;
+                if (e.clientY > panelRect.bottom - EDGE_ZONE) {
+                    if (panel.scrollTop + panel.clientHeight >= groupBottom - 1) { stopAutoScroll(); }
+                    else {
+                        const over = Math.min(e.clientY - (panelRect.bottom - EDGE_ZONE), EDGE_ZONE);
+                        speed = BASE_SPEED + (over / EDGE_ZONE) * MAX_EXTRA;
+                    }
+                } else if (e.clientY < panelRect.top + EDGE_ZONE) {
+                    if (panel.scrollTop <= Math.max(0, groupTop) + 1) { stopAutoScroll(); }
+                    else {
+                        const over2 = Math.min((panelRect.top + EDGE_ZONE) - e.clientY, EDGE_ZONE);
+                        speed = -(BASE_SPEED + (over2 / EDGE_ZONE) * MAX_EXTRA);
+                    }
+                }
+            }
+            if (speed !== 0) startAutoScroll(panel, bounds, speed);
+            else stopAutoScroll();
+        }
+    });
+
+    document.addEventListener('pointerup', () => {
+        endDrag();
+    });
+
+    document.addEventListener('wheel', (e) => {
+        if (!dragging) return;
+        const panel = document.getElementById('qrl-panel');
+        if (!panel) return;
+        e.preventDefault();
+        panel.scrollTop += e.deltaY;
+    }, { passive: false });
 }
 
 function insertItem(srcItem, targetItem, insertBefore) {
@@ -1112,18 +1430,28 @@ function loadPanelValues() {
     $('qrl-layout-mode').value = s.layoutMode;
     $('qrl-columns').value = s.rows;
     $('qrl-columns-value').textContent = s.rows;
-    $('qrl-btn-scale').value = s.buttonScale;
-    $('qrl-btn-scale-value').textContent = s.buttonScale;
-    $('qrl-margin-y').value = s.marginY;
-    $('qrl-margin-y-value').textContent = s.marginY;
-    $('qrl-margin-x').value = s.marginX;
-    $('qrl-margin-x-value').textContent = s.marginX;
+    $('qrl-btn-scale').value = Math.round(s.buttonScale);
+    $('qrl-btn-scale-input').value = s.buttonScale;
+    $('qrl-margin-y').value = Math.round(s.marginY);
+    $('qrl-margin-y-input').value = s.marginY;
+    $('qrl-margin-x').value = Math.round(s.marginX);
+    $('qrl-margin-x-input').value = s.marginX;
     $('qrl-btn-font-size').value = s.buttonFontSize;
     $('qrl-bar-max-height').value = s.barMaxHeight;
     $('qrl-preset-name').value = s.currentPreset || '';
     $('qrl-fold-enabled').checked = s.foldEnabled !== false;
+    $('qrl-fold-btn-scale').value = s.foldButtonScale;
+    $('qrl-fold-btn-scale-value').textContent = s.foldButtonScale;
+    $('qrl-fold-btn-icon').value = s.foldButtonIcon;
+    $('qrl-fold-btn-color').value = s.foldButtonColor || '#ffffff';
     $('qrl-fold-gap').value = s.foldGap;
     $('qrl-fold-gap-value').textContent = s.foldGap;
+    $('qrl-fold-gap-y').value = s.foldGapY ?? 2;
+    $('qrl-fold-gap-y-value').textContent = s.foldGapY ?? 2;
+    $('qrl-fold-gap-y').value = s.foldGapY ?? 2;
+    $('qrl-fold-gap-y-value').textContent = s.foldGapY ?? 2;
+    $('qrl-fold-gap-y').value = s.foldGapY ?? 2;
+    $('qrl-fold-gap-y-value').textContent = s.foldGapY ?? 2;
 }
 
 function populatePresetDropdown() {
@@ -1140,32 +1468,73 @@ function populatePresetDropdown() {
     if (s.currentPreset && s.presets[s.currentPreset]) sel.value = s.currentPreset;
 }
 
+function positionOverlay(el) {
+    const panel = document.getElementById('qrl-panel');
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    el.style.top = r.top + 'px';
+    el.style.left = r.left + 'px';
+    el.style.width = r.width + 'px';
+    el.style.height = r.height + 'px';
+}
+
+function showSaveToast(text, success) {
+    let toast = document.getElementById('qrl-save-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'qrl-save-toast';
+        document.body.appendChild(toast);
+    }
+    const panel = document.getElementById('qrl-panel');
+    if (panel) {
+        const r = panel.getBoundingClientRect();
+        toast.style.top = (r.top + r.height / 2) + 'px';
+        toast.style.left = (r.left + r.width / 2) + 'px';
+    }
+    toast.textContent = text;
+    toast.className = 'qrl-toast ' + (success ? 'qrl-toast-ok' : 'qrl-toast-fail');
+    toast.classList.remove('qrl-toast-hide');
+    toast.classList.add('qrl-toast-show');
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => {
+        toast.classList.remove('qrl-toast-show');
+        toast.classList.add('qrl-toast-hide');
+    }, 1000);
+}
+
 function savePreset() {
     const s = loadSettings();
     const sel = document.getElementById('qrl-presets');
     const nameInput = document.getElementById('qrl-preset-name');
     const name = (nameInput?.value || '').trim();
     if (!name) return;
-    if (!s.presets) s.presets = {};
-    const selectedName = sel?.value || '';
-    if (selectedName && selectedName !== name) {
-        delete s.presets[selectedName];
+    try {
+        if (!s.presets) s.presets = {};
+        const selectedName = sel?.value || '';
+        if (selectedName && selectedName !== name) {
+            delete s.presets[selectedName];
+        }
+        s.presets[name] = getLayoutSnapshot(s);
+        s.currentPreset = name;
+        saveSettingsDebounced();
+        populatePresetDropdown();
+        if (sel) sel.value = name;
+        showSaveToast('保存成功', true);
+    } catch (e) {
+        showSaveToast('保存失败', false);
     }
-    s.presets[name] = getLayoutSnapshot(s);
-    s.currentPreset = name;
-    saveSettingsDebounced();
-    populatePresetDropdown();
-    if (sel) sel.value = name;
 }
 
 function loadPreset(name) {
     const s = loadSettings();
     if (!s.presets || !s.presets[name]) return;
+    resetButtonStyles();
     applyLayoutToSettings(s, s.presets[name]);
     s.currentPreset = name;
     loadPanelValues();
     syncGridGroup();
     saveAndApply();
+    renderButtonList();
 }
 
 function deletePreset() {
@@ -1195,13 +1564,15 @@ function addConfirmOverlay(panel) {
             <button id="qrl-cfm-no">取消</button>
         </div>
     </div>`;
-    panel.appendChild(overlay);
+    document.body.appendChild(overlay);
     overlay.querySelector('#qrl-cfm-yes')?.addEventListener('click', () => {
-        overlay.style.display = 'none';
+        overlay.classList.remove('qrl-cfm-visible');
+        setTimeout(() => { overlay.style.display = 'none'; }, 200);
         if (_confirmCallback) { _confirmCallback(); _confirmCallback = null; }
     });
     overlay.querySelector('#qrl-cfm-no')?.addEventListener('click', () => {
-        overlay.style.display = 'none';
+        overlay.classList.remove('qrl-cfm-visible');
+        setTimeout(() => { overlay.style.display = 'none'; }, 200);
         _confirmCallback = null;
     });
 }
@@ -1209,11 +1580,15 @@ function addConfirmOverlay(panel) {
 function showConfirm(title, subtitle, onYes, yesText) {
     const overlay = document.getElementById('qrl-confirm-overlay');
     if (!overlay) return;
+    positionOverlay(overlay);
     document.getElementById('qrl-cfm-title').textContent = title;
     document.getElementById('qrl-cfm-sub').textContent = subtitle;
     document.getElementById('qrl-cfm-yes').textContent = yesText || '确定';
     _confirmCallback = onYes;
     overlay.style.display = 'flex';
+    requestAnimationFrame(() => {
+        overlay.classList.add('qrl-cfm-visible');
+    });
 }
 
 function showResetConfirm() {
