@@ -623,3 +623,24 @@ body.qrl-active #qrl-custom-buttons {
     color: #fff;
     box-shadow: 0 2px 8px rgba(192,57,43,0.4);
 }
+
+.qrl-fold-empty-tip {
+    position: fixed;
+    z-index: 10001;
+    background: var(--background, #1a1a2e);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: var(--SmartThemeBodyColor, #ddd);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    white-space: nowrap;
+}
+.qrl-fold-empty-tip.qrl-tip-show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
