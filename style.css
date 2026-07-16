@@ -8,6 +8,86 @@
     --qrl-bar-max-height: none;
 }
 
+/* 默认：完全跟随酒馆 */
+body.qrl-active {
+    --qrl-bg: var(--SmartThemeBlurTintColor, #1a1a2e);
+    --qrl-border: var(--SmartThemeBorderColor, #555);
+    --qrl-text: var(--SmartThemeBodyColor, #ddd);
+    --qrl-text-muted: var(--SmartThemeBodyColor, #999);
+    --qrl-header-bg: var(--SmartThemeBlurTintColor, #2a2a3e);
+    --qrl-header-text: var(--SmartThemeBodyColor, #ddd);
+    --qrl-input-bg: var(--SmartThemeShadowColor, rgba(0,0,0,0.2));
+    --qrl-input-text: var(--SmartThemeBodyColor, #ddd);
+    --qrl-hr: var(--SmartThemeBorderColor, rgba(128,128,128,0.5));
+    --qrl-item-bg: rgba(128,128,128,0.08);
+    --qrl-code-bg: rgba(128,128,128,0.15);
+    --qrl-overlay-bg: rgba(0,0,0,0.6);
+    --qrl-shadow: rgba(0,0,0,0.4);
+    --qrl-drag-border: var(--SmartThemeBodyColor, #fff);
+    --qrl-fold-bg: var(--SmartThemeBlurTintColor, rgba(30,30,30,0.7));
+    --qrl-fold-border: var(--SmartThemeBorderColor, #555);
+    --qrl-fold-blur: var(--SmartThemeBlurStrength, 0px);
+}
+
+/* 跟随酒馆时：设置面板跟随ST模糊效果 */
+body.qrl-active #qrl-panel,
+body.qrl-active #qrl-panel.qrl-visible {
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 0px));
+    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength, 0px));
+}
+
+/* 跟随酒馆时：覆盖ST输入框的黑色默认背景（checkbox/color/range除外，它们有自己的ST样式） */
+body.qrl-active #qrl-panel .text_pole,
+body.qrl-active #qrl-panel input:not([type="checkbox"]):not([type="color"]):not([type="range"]),
+body.qrl-active #qrl-panel select,
+body.qrl-active #qrl-panel textarea {
+    background-color: var(--SmartThemeBlurTintColor, var(--qrl-input-bg)) !important;
+    color: var(--SmartThemeBodyColor, var(--qrl-input-text)) !important;
+    border-color: var(--SmartThemeBorderColor, var(--qrl-border)) !important;
+}
+
+/* 浅色 - 降亮度（仅面板，折叠弹窗仍跟随酒馆） */
+body.qrl-theme-light {
+    --qrl-bg: #e2e2e2;
+    --qrl-border: #bbb;
+    --qrl-text: #222;
+    --qrl-text-muted: #666;
+    --qrl-header-bg: #d0d0d0;
+    --qrl-header-text: #111;
+    --qrl-input-bg: #d8d8d8;
+    --qrl-input-text: #111;
+    --qrl-hr: rgba(0,0,0,0.15);
+    --qrl-item-bg: rgba(0,0,0,0.05);
+    --qrl-code-bg: rgba(0,0,0,0.08);
+    --qrl-overlay-bg: rgba(0,0,0,0.25);
+    --qrl-shadow: rgba(0,0,0,0.2);
+    --qrl-drag-border: #222;
+    --qrl-fold-bg: var(--SmartThemeBlurTintColor, rgba(255,255,255,0.7));
+    --qrl-fold-border: var(--SmartThemeBorderColor, #bbb);
+    --qrl-fold-blur: var(--SmartThemeBlurStrength, 0px);
+}
+
+/* 深色（仅面板，折叠弹窗仍跟随酒馆） */
+body.qrl-theme-dark {
+    --qrl-bg: #1a1a2e;
+    --qrl-border: #3a3a4e;
+    --qrl-text: #e0e0e0;
+    --qrl-text-muted: #999;
+    --qrl-header-bg: #2a2a3e;
+    --qrl-header-text: #f0f0f0;
+    --qrl-input-bg: rgba(255,255,255,0.08);
+    --qrl-input-text: #e0e0e0;
+    --qrl-hr: rgba(128,128,128,0.3);
+    --qrl-item-bg: rgba(255,255,255,0.04);
+    --qrl-code-bg: rgba(255,255,255,0.08);
+    --qrl-overlay-bg: rgba(0,0,0,0.6);
+    --qrl-shadow: rgba(0,0,0,0.5);
+    --qrl-drag-border: #e0e0e0;
+    --qrl-fold-bg: var(--SmartThemeBlurTintColor, rgba(30,30,30,0.7));
+    --qrl-fold-border: var(--SmartThemeBorderColor, #3a3a4e);
+    --qrl-fold-blur: var(--SmartThemeBlurStrength, 0px);
+}
+
 body.qrl-active #qr--bar,
 body.qrl-active #qr--popout {
     display: none !important;
@@ -60,7 +140,7 @@ body.qrl-active #qrl-custom-buttons {
 
 .qrl-warn {
     color: #ffdd00 !important;
-    text-shadow: 0 0 4px #ffdd00, 0 0 8px rgba(255,221,0,0.5);
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 4px #ffdd00, 0 0 8px rgba(255,221,0,0.5);
     font-size: 11px;
     font-weight: bold;
     margin: 2px 0 4px;
@@ -74,7 +154,7 @@ body.qrl-active #qrl-custom-buttons {
     justify-content: center !important;
     font-size: 18px;
     line-height: 1 !important;
-    color: var(--SmartThemeBodyColor, #ddd);
+    color: var(--qrl-text);
     opacity: 0.8;
     transition: opacity 0.15s;
     flex-shrink: 0;
@@ -86,10 +166,8 @@ body.qrl-active #qrl-custom-buttons {
 .qrl-fold-popup {
     position: fixed;
     z-index: 10001;
-    background: var(--background, #1a1a2e);
-    border: 1px solid var(--border-color, #333);
     border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 16px var(--qrl-shadow);
     padding: 4px;
     display: flex;
     flex-direction: row;
@@ -125,16 +203,16 @@ body.qrl-active #qrl-custom-buttons {
 .qrl-fold-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    border: 1px solid var(--border-color, #333);
+    border: 1px solid var(--qrl-border);
     border-radius: 4px;
     overflow: hidden;
 }
 .qrl-fold-grid .qrl-fold-item {
     padding: 3px 6px;
-    border-bottom: 1px solid var(--border-color, #333);
+    border-bottom: 1px solid var(--qrl-border);
 }
 .qrl-fold-grid .qrl-fold-item:nth-child(odd) {
-    border-right: 1px solid var(--border-color, #333);
+    border-right: 1px solid var(--qrl-border);
 }
 .qrl-fold-grid .qrl-fold-item:nth-last-child(-n+2) {
     border-bottom: none;
@@ -142,16 +220,16 @@ body.qrl-active #qrl-custom-buttons {
 .qrl-fold-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    border: 1px solid var(--border-color, #333);
+    border: 1px solid var(--qrl-border);
     border-radius: 4px;
     overflow: hidden;
 }
 .qrl-fold-grid .qrl-fold-item {
     padding: 3px 6px;
-    border-bottom: 1px solid var(--border-color, #333);
+    border-bottom: 1px solid var(--qrl-border);
 }
 .qrl-fold-grid .qrl-fold-item:nth-child(odd) {
-    border-right: 1px solid var(--border-color, #333);
+    border-right: 1px solid var(--qrl-border);
 }
 .qrl-fold-grid .qrl-fold-item:nth-last-child(-n+2) {
     border-bottom: none;
@@ -160,12 +238,12 @@ body.qrl-active #qrl-custom-buttons {
 .qrl-group-header {
     font-size: 12px;
     font-weight: bold;
-    color: var(--SmartThemeBodyColor, #ddd);
-    background: var(--interactable-background, #2a2a3e);
+    color: var(--qrl-text);
+    background: var(--qrl-header-bg);
     padding: 4px 6px;
     border-radius: 4px;
     margin: 6px 0 2px;
-    border-left: 3px solid var(--SmartThemeBodyColor, #fff);
+    border-left: 3px solid var(--qrl-drag-border);
 }
 .qrl-group-folded {
     opacity: 0.7;
@@ -179,12 +257,13 @@ body.qrl-active #qrl-custom-buttons {
     max-height: calc(75vh - 50px);
     overflow-y: auto;
     scroll-behavior: smooth;
-    background: var(--background, #1a1a2e);
-    border: 1px solid var(--border-color, #333);
+    background: var(--qrl-bg);
+    border: 1px solid var(--qrl-border);
     border-radius: 8px;
-    box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+    box-shadow: 0 6px 24px var(--qrl-shadow);
     z-index: 10000;
     font-size: 13px;
+    font-weight: 500;
     display: block;
     opacity: 0;
     transform: scale(0.95);
@@ -207,8 +286,8 @@ body.qrl-active #qrl-custom-buttons {
     flex-direction: column;
     gap: 3px;
     padding: 6px 8px;
-    background: var(--interactable-background, #2a2a3e);
-    border-bottom: 1px solid var(--border-color, #333);
+    background: var(--qrl-header-bg);
+    border-bottom: 1px solid var(--qrl-border);
     border-radius: 8px 8px 0 0;
     cursor: grab;
     user-select: none;
@@ -233,7 +312,7 @@ body.qrl-active #qrl-custom-buttons {
     white-space: nowrap;
     min-width: 55px;
     flex-shrink: 0;
-    color: var(--text-muted, #999);
+    color: var(--qrl-text-muted);
 }
 
 #qrl-presets,
@@ -256,8 +335,8 @@ body.qrl-active #qrl-custom-buttons {
 }
 
 .qrl-input-half {
-    flex: 0 0 50% !important;
-    min-width: 70px !important;
+    flex: 0 0 66% !important;
+    min-width: 95px !important;
 }
 
 .qrl-spacer {
@@ -268,9 +347,9 @@ body.qrl-active #qrl-custom-buttons {
     font-size: 12px;
     padding: 2px 8px;
     border-radius: 4px;
-    border: 1px solid var(--border-color, #555);
-    background: var(--interactable-background, #3a3a4e);
-    color: var(--interactable-color, #ddd);
+    border: 1px solid var(--qrl-border);
+    background: var(--qrl-header-bg);
+    color: var(--qrl-header-text);
     cursor: pointer;
     white-space: nowrap;
     height: 24px;
@@ -298,6 +377,7 @@ body.qrl-active #qrl-custom-buttons {
     margin: 3px 0;
     flex-wrap: wrap;
     font-size: 13px;
+    font-weight: 500;
 }
 #qrl-panel-body label .text_pole {
     flex: 1;
@@ -309,7 +389,7 @@ body.qrl-active #qrl-custom-buttons {
 #qrl-panel-body hr {
     margin: 5px 0;
     border: none;
-    border-top: 2px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.5));
+    border-top: 2px solid var(--qrl-hr);
     opacity: 0.7;
 }
 #qrl-panel-body .checkbox_label {
@@ -328,9 +408,9 @@ body.qrl-active #qrl-custom-buttons {
     margin-left: auto;
     cursor: pointer;
     background: transparent;
-    border: 1px solid var(--border-color, #555);
+    border: 1px solid var(--qrl-border);
     border-radius: 3px;
-    color: var(--text-muted, #999);
+    color: var(--qrl-text-muted);
     height: 18px;
     display: flex;
     align-items: center;
@@ -350,26 +430,28 @@ body.qrl-active #qrl-custom-buttons {
     padding: 0 3px;
     text-align: center;
     color: inherit;
-    background: var(--SmartThemeShadowColor, rgba(0,0,0,0.2));
-    border: 1px solid var(--border-color, #555);
+    background: var(--qrl-input-bg);
+    border: 1px solid var(--qrl-border);
     border-radius: 3px;
     font-family: monospace;
 }
 .qrl-section-label {
     font-size: 12px;
     font-weight: bold;
-    color: var(--text-muted, #999);
+    color: var(--qrl-text-muted);
     margin: 1px 0 2px;
 }
 .qrl-desc {
     font-size: 11px;
-    color: var(--text-muted, #888);
+    color: var(--qrl-text-muted);
     margin: 1px 0 3px;
     line-height: 1.5;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 .qrl-desc code {
     font-size: 11px;
-    background: rgba(255,255,255,0.08);
+    background: var(--qrl-code-bg);
     padding: 0 3px;
     border-radius: 2px;
 }
@@ -382,14 +464,14 @@ body.qrl-active #qrl-custom-buttons {
     align-items: center;
     gap: 4px;
     padding: 5px 8px;
-    background: var(--interactable-background, #2a2a3e);
-    border: 1px solid var(--border-color, #333);
+    background: var(--qrl-header-bg);
+    border: 1px solid var(--qrl-border);
     border-radius: 4px;
     cursor: pointer;
     user-select: none;
     font-size: 12px;
     font-weight: bold;
-    color: var(--SmartThemeBodyColor, #ddd);
+    color: var(--qrl-text);
 }
 .qrl-collapsible-header:hover {
     filter: brightness(1.15);
@@ -413,9 +495,9 @@ body.qrl-active #qrl-custom-buttons {
     padding: 2px 8px;
     margin-bottom: 4px;
     border-radius: 3px;
-    border: 1px solid var(--border-color, #555);
-    background: var(--interactable-background, #3a3a4e);
-    color: var(--interactable-color, #ddd);
+    border: 1px solid var(--qrl-border);
+    background: var(--qrl-header-bg);
+    color: var(--qrl-header-text);
     cursor: pointer;
 }
 .qrl-refresh-btn:hover {
@@ -424,10 +506,10 @@ body.qrl-active #qrl-custom-buttons {
 
 .qrl-btn-item {
     padding: 6px 8px;
-    border: 1px solid var(--border-color, #333);
+    border: 1px solid var(--qrl-border);
     border-radius: 4px;
     margin: 3px 0;
-    background: rgba(255,255,255,0.03);
+    background: var(--qrl-item-bg);
     font-size: 12px;
 }
 .qrl-btn-item.qrl-dragging {
@@ -436,21 +518,21 @@ body.qrl-active #qrl-custom-buttons {
 .qrl-drag-ghost {
     position: fixed;
     z-index: 100000;
-    background: var(--background, #1a1a2e);
-    border: 1px solid var(--SmartThemeBodyColor, #fff);
+    background: var(--qrl-bg);
+    border: 1px solid var(--qrl-drag-border);
     border-radius: 4px;
     padding: 4px 10px;
     font-size: 12px;
     font-weight: bold;
     pointer-events: none;
     white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    box-shadow: 0 2px 8px var(--qrl-shadow);
 }
 .qrl-btn-item.qrl-drag-before {
-    border-top: 2px solid var(--SmartThemeBodyColor, #fff);
+    border-top: 2px solid var(--qrl-drag-border);
 }
 .qrl-btn-item.qrl-drag-after {
-    border-bottom: 2px solid var(--SmartThemeBodyColor, #fff);
+    border-bottom: 2px solid var(--qrl-drag-border);
 }
 .qrl-item-row1 {
     display: flex;
@@ -493,7 +575,7 @@ body.qrl-active #qrl-custom-buttons {
 }
 .qrl-field > span {
     font-size: 12px;
-    color: var(--text-muted, #999);
+    color: var(--qrl-text-muted);
 }
 .qrl-field-check {
     gap: 2px;
@@ -513,9 +595,9 @@ body.qrl-active #qrl-custom-buttons {
     font-size: 12px;
     padding: 0 3px;
     text-align: center;
-    color: #000000;
-    background: #ffffff;
-    border: 1px solid var(--border-color, #555);
+    color: var(--qrl-input-text, #000);
+    background: var(--SmartThemeBlurTintColor, var(--qrl-input-bg, #fff));
+    border: 1px solid var(--qrl-border);
     border-radius: 3px;
 }
 .qrl-btn-item input[type="checkbox"] {
@@ -528,9 +610,9 @@ body.qrl-active #qrl-custom-buttons {
     margin-left: auto;
     cursor: pointer;
     background: transparent;
-    border: 1px solid var(--border-color, #555);
+    border: 1px solid var(--qrl-border);
     border-radius: 3px;
-    color: var(--text-muted, #999);
+    color: var(--qrl-text-muted);
     height: 18px;
     display: flex;
     align-items: center;
@@ -541,7 +623,7 @@ body.qrl-active #qrl-custom-buttons {
 
 #qrl-confirm-overlay {
     position: fixed;
-    background: rgba(0,0,0,0.6);
+    background: var(--qrl-overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -554,13 +636,13 @@ body.qrl-active #qrl-custom-buttons {
     opacity: 1;
 }
 #qrl-confirm-dialog {
-    background: var(--background, #1a1a2e);
-    border: 1px solid var(--border-color, #555);
+    background: var(--qrl-bg);
+    border: 1px solid var(--qrl-border);
     border-radius: 6px;
     padding: 16px;
     text-align: center;
     max-width: 220px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 16px var(--qrl-shadow);
     transform: scale(0.85);
     transition: transform 0.2s ease;
 }
@@ -580,7 +662,7 @@ body.qrl-active #qrl-custom-buttons {
 #qrl-confirm-dialog .qrl-cfm-btns button {
     padding: 4px 14px;
     border-radius: 4px;
-    border: 1px solid var(--border-color, #555);
+    border: 1px solid var(--qrl-border);
     cursor: pointer;
     font-size: 13px;
 }
@@ -589,8 +671,8 @@ body.qrl-active #qrl-custom-buttons {
     color: #fff;
 }
 #qrl-cfm-no {
-    background: var(--interactable-background, #3a3a4e);
-    color: var(--interactable-color, #ddd);
+    background: var(--qrl-header-bg);
+    color: var(--qrl-header-text);
 }
 #qrl-save-toast {
     position: fixed;
@@ -627,13 +709,13 @@ body.qrl-active #qrl-custom-buttons {
 .qrl-fold-empty-tip {
     position: fixed;
     z-index: 10001;
-    background: var(--background, #1a1a2e);
-    border: 1px solid var(--border-color, #333);
+    background: var(--qrl-bg);
+    border: 1px solid var(--qrl-border);
     border-radius: 6px;
     padding: 6px 14px;
     font-size: 13px;
-    color: var(--SmartThemeBodyColor, #ddd);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    color: var(--qrl-text);
+    box-shadow: 0 4px 16px var(--qrl-shadow);
     pointer-events: none;
     opacity: 0;
     transform: translateX(-50%) translateY(6px);

@@ -22,6 +22,7 @@ const defaultSettings = {
     foldButtonScale: 100,
     foldButtonIcon: 'fa-mosaic fa-solid fa-house',
     foldButtonColor: '',
+    theme: 'auto',
 };
 
 const LAYOUT_FIELDS = ['enabled', 'layoutMode', 'rows', 'buttonScale', 'marginY', 'marginX', 'buttonFontSize', 'barMaxHeight'];
@@ -47,6 +48,7 @@ function loadSettings() {
     if (s.foldButtonScale === undefined) s.foldButtonScale = 100;
     if (s.foldButtonIcon === undefined) s.foldButtonIcon = 'fa-mosaic fa-solid fa-house';
     if (s.foldButtonColor === undefined) s.foldButtonColor = '';
+    if (!s.theme) s.theme = 'auto';
     return s;
 }
 
@@ -75,8 +77,17 @@ function applyLayoutToSettings(s, data) {
     }
 }
 
+function applyTheme() {
+    const s = loadSettings();
+    document.body.classList.remove('qrl-theme-light', 'qrl-theme-dark');
+    if (s.theme && s.theme !== 'auto') {
+        document.body.classList.add('qrl-theme-' + s.theme);
+    }
+}
+
 function applySettings() {
     _isApplying = true;
+    applyTheme();
     const s = loadSettings();
     const root = document.documentElement;
     if (s.enabled) {
@@ -291,6 +302,27 @@ function showFoldEmptyTip() {
     }, 550);
 }
 
+function syncFoldPopupBg() {
+    if (!_foldPopup) return;
+    const sendForm = document.getElementById('send_form');
+    if (!sendForm) return;
+    const cs = getComputedStyle(sendForm);
+    const bg = cs.backgroundColor;
+    const bf = cs.backdropFilter || cs.webkitBackdropFilter || '';
+    const bd = cs.borderLeftColor || cs.borderColor;
+    _foldPopup.style.setProperty('background', bg, 'important');
+    if (bf && bf !== 'none') {
+        _foldPopup.style.setProperty('backdrop-filter', bf, 'important');
+        _foldPopup.style.setProperty('-webkit-backdrop-filter', bf, 'important');
+    } else {
+        _foldPopup.style.removeProperty('backdrop-filter');
+        _foldPopup.style.removeProperty('-webkit-backdrop-filter');
+    }
+    if (bd) {
+        _foldPopup.style.setProperty('border', '1px solid ' + bd, 'important');
+    }
+}
+
 function openFoldPopup() {
     if (!_foldPopup) return;
     collectNewButtons();
@@ -324,6 +356,7 @@ function openFoldPopup() {
         });
     }
     
+    syncFoldPopupBg();
     _foldPopup.classList.add('qrl-fold-visible');
     applyFoldGap();
     requestAnimationFrame(() => {
@@ -638,6 +671,7 @@ function fullReset() {
     s.foldButtonScale = 100;
     s.foldButtonIcon = 'fa-mosaic fa-solid fa-house';
     s.foldButtonColor = '';
+    s.theme = 'auto';
     applySettings();
     loadPanelValues();
     syncGridGroup();
@@ -711,6 +745,14 @@ function createFloatingPanel() {
         </label>
         <div class="qrl-desc">勾选后以下设置生效，取消则恢复默认样式</div>
         <div class="qrl-warn">⚠ 取消勾选/关闭脚本按钮时，需要刷新网页才生效</div>
+        <div class="qrl-row qrl-mt4">
+            <span class="qrl-label">面板主题:</span>
+            <select id="qrl-theme" class="qrl-input-half">
+                <option value="auto">跟随酒馆</option>
+                <option value="light">浅色</option>
+                <option value="dark">深色</option>
+            </select>
+        </div>
 
         <hr>
 
@@ -939,6 +981,11 @@ function bindPanelEvents() {
         syncGridGroup();
         saveAndApply();
     });
+    $('qrl-theme')?.addEventListener('change', function () {
+        loadSettings().theme = this.value;
+        applyTheme();
+        saveSettingsDebounced();
+    });
     $('qrl-columns')?.addEventListener('input', function () {
         $('qrl-columns-value').textContent = this.value;
         loadSettings().rows = Number(this.value);
@@ -1102,6 +1149,43 @@ function refreshButtonList() {
     renderButtonList();
 }
 
+function updateButtonListDefaults() {
+    const s = loadSettings();
+    const container = document.getElementById('qrl-button-list');
+    if (!container) return;
+    const items = [];
+    container.querySelectorAll('.qrl-btn-item').forEach(item => {
+        const name = item.dataset.name;
+        if (!name) return;
+        const st = s.buttonStyles ? s.buttonStyles[name] : null;
+        const needColor = !st || !st.color;
+        const needFontSize = !st || !st.fontSize || st.fontSize <= 0;
+        if (!needColor && !needFontSize) return;
+        items.push({
+            name,
+            fontInput: item.querySelector('.qrl-clr-font'),
+            fontSizeInput: item.querySelector('.qrl-font-size'),
+            needColor,
+            needFontSize,
+        });
+    });
+    if (items.length === 0) return;
+    const styleMap = new Map();
+    document.querySelectorAll('#qrl-custom-buttons .qr--button').forEach(btn => {
+        const name = getButtonName(btn);
+        if (name && !styleMap.has(name)) {
+            const cs = getComputedStyle(btn);
+            styleMap.set(name, { color: rgbToHex(cs.color), fontSize: parseInt(cs.fontSize) || 12 });
+        }
+    });
+    items.forEach(it => {
+        const defs = styleMap.get(it.name);
+        if (!defs) return;
+        if (it.needColor && it.fontInput) it.fontInput.value = defs.color;
+        if (it.needFontSize && it.fontSizeInput) it.fontSizeInput.value = defs.fontSize;
+    });
+}
+
 function renderButtonList() {
     const s = loadSettings();
     const container = document.getElementById('qrl-button-list');
@@ -1158,23 +1242,33 @@ function rgbToHex(rgb) {
 }
 
 function getButtonDefaultColor(name) {
-    const btn = Array.from(document.querySelectorAll('#qrl-custom-buttons .qr--button, #qr--bar .qr--button, #qr--popout .qr--button'))
+    const btn = Array.from(document.querySelectorAll('#qrl-custom-buttons .qr--button'))
         .find(b => getButtonName(b) === name);
     if (btn) {
-        const c = getComputedStyle(btn).color;
-        return rgbToHex(c);
+        const cs = getComputedStyle(btn);
+        return rgbToHex(cs.color);
     }
     return '#ffffff';
 }
 
 function getButtonDefaultFontSize(name) {
-    const btn = Array.from(document.querySelectorAll('#qrl-custom-buttons .qr--button, #qr--bar .qr--button, #qr--popout .qr--button'))
+    const btn = Array.from(document.querySelectorAll('#qrl-custom-buttons .qr--button'))
         .find(b => getButtonName(b) === name);
     if (btn) {
         const size = getComputedStyle(btn).fontSize;
         return parseInt(size) || 12;
     }
     return 12;
+}
+
+function getButtonDefaults(name) {
+    const btn = Array.from(document.querySelectorAll('#qrl-custom-buttons .qr--button'))
+        .find(b => getButtonName(b) === name);
+    if (btn) {
+        const cs = getComputedStyle(btn);
+        return { color: rgbToHex(cs.color), fontSize: parseInt(cs.fontSize) || 12 };
+    }
+    return { color: '#ffffff', fontSize: 12 };
 }
 
 function createButtonItem(name, style, scriptName = 'unknown') {
@@ -1235,11 +1329,6 @@ function createButtonItem(name, style, scriptName = 'unknown') {
 
     resetBtn.addEventListener('click', () => {
         if (s.buttonStyles) delete s.buttonStyles[name];
-        fontInput.value = defaultColor;
-        fontSizeInput.value = defaultFontSize;
-        boldInput.checked = false;
-        offsetYInput.value = 0;
-        offsetXInput.value = 0;
         const allBtns = document.querySelectorAll('#qrl-custom-buttons .qr--button');
         const scale = s.buttonScale / 100;
         allBtns.forEach(btn => {
@@ -1249,6 +1338,12 @@ function createButtonItem(name, style, scriptName = 'unknown') {
             btn.style.removeProperty('font-weight');
             btn.style.setProperty('transform', `scale(${scale})`, 'important');
         });
+        const defs = getButtonDefaults(name);
+        fontInput.value = defs.color;
+        fontSizeInput.value = defs.fontSize;
+        boldInput.checked = false;
+        offsetYInput.value = 0;
+        offsetXInput.value = 0;
         saveSettingsDebounced();
     });
 
@@ -1484,6 +1579,7 @@ function loadPanelValues() {
     const $ = (id) => document.getElementById(id);
     $('qrl-enabled').checked = s.enabled;
     $('qrl-layout-mode').value = s.layoutMode;
+    $('qrl-theme').value = s.theme || 'auto';
     $('qrl-columns').value = s.rows;
     $('qrl-columns-value').textContent = s.rows;
     $('qrl-btn-scale').value = Math.round(s.buttonScale);
@@ -1669,6 +1765,7 @@ jQuery(async () => {
         setTimeout(() => {
             applySettings();
             applyButtonCustomizations();
-        }, 300);
+            updateButtonListDefaults();
+        }, 50);
     });
 });
