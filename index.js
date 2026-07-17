@@ -20,13 +20,15 @@ const defaultSettings = {
     foldGap: 2,
     foldGapY: 2,
     foldButtonScale: 100,
+    foldButtonOffsetX: 0,
+    foldButtonOffsetY: 0,
     foldButtonIcon: 'fa-mosaic fa-solid fa-house',
     foldButtonColor: '',
     theme: 'auto',
 };
 
 const LAYOUT_FIELDS = ['enabled', 'layoutMode', 'rows', 'buttonScale', 'marginY', 'marginX', 'buttonFontSize', 'barMaxHeight'];
-const PRESET_EXTRA_FIELDS = ['buttonStyles', 'buttonOrder', 'foldedButtons', 'foldEnabled', 'foldGap', 'foldGapY', 'foldButtonScale', 'foldButtonIcon', 'foldButtonColor'];
+const PRESET_EXTRA_FIELDS = ['buttonStyles', 'buttonOrder', 'foldedButtons', 'foldEnabled', 'foldGap', 'foldGapY', 'foldButtonScale', 'foldButtonOffsetX', 'foldButtonOffsetY', 'foldButtonIcon', 'foldButtonColor'];
 
 
 let _confirmCallback = null;
@@ -46,6 +48,8 @@ function loadSettings() {
     if (s.foldGap === undefined) s.foldGap = 2;
     if (s.foldGapY === undefined) s.foldGapY = 2;
     if (s.foldButtonScale === undefined) s.foldButtonScale = 100;
+    if (s.foldButtonOffsetX === undefined) s.foldButtonOffsetX = 0;
+    if (s.foldButtonOffsetY === undefined) s.foldButtonOffsetY = 0;
     if (s.foldButtonIcon === undefined) s.foldButtonIcon = 'fa-mosaic fa-solid fa-house';
     if (s.foldButtonColor === undefined) s.foldButtonColor = '';
     if (!s.theme) s.theme = 'auto';
@@ -217,6 +221,11 @@ let _foldButton = null;
 let _foldPopup = null;
 let _foldDocHandler = null;
 
+function applyFoldButtonTransform() {
+    const s = loadSettings();
+    if (_foldButton) _foldButton.style.setProperty('transform', `translate(${s.foldButtonOffsetX || 0}px, ${s.foldButtonOffsetY || 0}px)`, 'important');
+}
+
 function ensureFoldButton() {
     const s = loadSettings();
     
@@ -238,6 +247,7 @@ function ensureFoldButton() {
     
     _foldButton.innerHTML = `<i class="${s.foldButtonIcon}"></i>`;
     _foldButton.style.setProperty('font-size', `${s.foldButtonScale * 0.252}px`, 'important');
+    applyFoldButtonTransform();
     if (s.foldButtonColor) _foldButton.style.setProperty('color', s.foldButtonColor, 'important');
     else _foldButton.style.removeProperty('color');
     
@@ -408,6 +418,7 @@ function applyFoldState() {
     
     if (_foldButton && s.foldEnabled) {
         _foldButton.style.setProperty('font-size', `${s.foldButtonScale * 0.252}px`, 'important');
+        applyFoldButtonTransform();
         _foldButton.innerHTML = `<i class="${s.foldButtonIcon}"></i>`;
         if (s.foldButtonColor) _foldButton.style.setProperty('color', s.foldButtonColor, 'important');
         else _foldButton.style.removeProperty('color');
@@ -580,6 +591,7 @@ function applyButtonStyles() {
     
     if (_foldButton && s.foldEnabled) {
         _foldButton.style.setProperty('font-size', `${s.foldButtonScale * 0.252}px`, 'important');
+        applyFoldButtonTransform();
         _foldButton.innerHTML = `<i class="${s.foldButtonIcon}"></i>`;
         if (s.foldButtonColor) _foldButton.style.setProperty('color', s.foldButtonColor, 'important');
         else _foldButton.style.removeProperty('color');
@@ -669,6 +681,8 @@ function fullReset() {
     s.foldGap = 2;
     s.foldGapY = 2;
     s.foldButtonScale = 100;
+    s.foldButtonOffsetX = 0;
+    s.foldButtonOffsetY = 0;
     s.foldButtonIcon = 'fa-mosaic fa-solid fa-house';
     s.foldButtonColor = '';
     s.theme = 'auto';
@@ -825,6 +839,16 @@ function createFloatingPanel() {
                     <input type="range" id="qrl-fold-btn-scale" min="50" max="200" value="100" class="range_slider">
                     <button class="qrl-slider-reset" data-target="qrl-fold-btn-scale" data-default="100">重置</button>
                 </label>
+                <label>左右:
+                    <input type="text" class="qrl-range-input" id="qrl-fold-btn-offset-x-input" value="0" data-suffix="px" style="width:52px;">
+                    <input type="range" id="qrl-fold-btn-offset-x" min="-30" max="30" value="0" class="range_slider">
+                    <button class="qrl-slider-reset" data-target="qrl-fold-btn-offset-x" data-default="0">重置</button>
+                </label>
+                <label>上下:
+                    <input type="text" class="qrl-range-input" id="qrl-fold-btn-offset-y-input" value="0" data-suffix="px" style="width:52px;">
+                    <input type="range" id="qrl-fold-btn-offset-y" min="-30" max="30" value="0" class="range_slider">
+                    <button class="qrl-slider-reset" data-target="qrl-fold-btn-offset-y" data-default="0">重置</button>
+                </label>
                 <label>图标:
                     <select id="qrl-fold-btn-icon" class="text_pole qrl-input-third">
                         <option value="fa-mosaic fa-solid fa-house">🏠 默认房屋</option>
@@ -958,6 +982,8 @@ function bindPanelEvents() {
         if (_foldButton) _foldButton.style.setProperty('font-size', `${s.foldButtonScale * 0.252}px`, 'important');
     }
     bindSliderInput('qrl-fold-btn-scale', 'qrl-fold-btn-scale-input', 'foldButtonScale', applyFoldButtonScale);
+    bindSliderInput('qrl-fold-btn-offset-x', 'qrl-fold-btn-offset-x-input', 'foldButtonOffsetX', applyFoldButtonTransform);
+    bindSliderInput('qrl-fold-btn-offset-y', 'qrl-fold-btn-offset-y-input', 'foldButtonOffsetY', applyFoldButtonTransform);
     bindSliderInput('qrl-fold-gap', 'qrl-fold-gap-input', 'foldGap', applyFoldGap);
     bindSliderInput('qrl-fold-gap-y', 'qrl-fold-gap-y-input', 'foldGapY', applyFoldGap);
     $('qrl-fold-btn-icon')?.addEventListener('change', function () {
@@ -1594,6 +1620,10 @@ function loadPanelValues() {
     $('qrl-fold-enabled').checked = s.foldEnabled !== false;
     $('qrl-fold-btn-scale').value = s.foldButtonScale;
     $('qrl-fold-btn-scale-input').value = s.foldButtonScale;
+    $('qrl-fold-btn-offset-x').value = s.foldButtonOffsetX ?? 0;
+    $('qrl-fold-btn-offset-x-input').value = s.foldButtonOffsetX ?? 0;
+    $('qrl-fold-btn-offset-y').value = s.foldButtonOffsetY ?? 0;
+    $('qrl-fold-btn-offset-y-input').value = s.foldButtonOffsetY ?? 0;
     $('qrl-fold-btn-icon').value = s.foldButtonIcon;
     $('qrl-fold-btn-color').value = s.foldButtonColor || '#ffffff';
     $('qrl-fold-gap').value = s.foldGap;

@@ -146,6 +146,15 @@ body.qrl-active #qrl-custom-buttons {
     margin: 2px 0 4px;
 }
 
+/* 覆盖 ST 基础 CSS `#rightSendForm>div { width/height: var(--bottomFormBlockSize) }`
+   否则折叠按钮容器被锁死成固定尺寸，改 font-size 看不出变化 */
+#rightSendForm .qrl-fold-btn {
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+}
+
 .qrl-fold-btn {
     cursor: pointer !important;
     margin: 0 4px !important;
@@ -158,6 +167,16 @@ body.qrl-active #qrl-custom-buttons {
     opacity: 0.8;
     transition: opacity 0.15s;
     flex-shrink: 0;
+}
+
+/* 主题（如 sky7.8/双色盒子）用 `#send_form .fa-solid { font-size: ... }` 锁死图标大小，
+   会覆盖折叠按钮 div 上 font-size 的继承值。用高特异性 + !important 强制图标继承父级，
+   使大小缩放在任何主题下都生效。 */
+#rightSendForm .qrl-fold-btn .fa-solid,
+#rightSendForm .qrl-fold-btn i,
+.qrl-fold-btn .fa-solid,
+.qrl-fold-btn i {
+    font-size: inherit !important;
 }
 .qrl-fold-btn:hover {
     opacity: 1;
