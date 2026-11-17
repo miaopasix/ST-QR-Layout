@@ -137,24 +137,126 @@ function applySettings() {
 
 let _qrObserver = null;
 let _isApplying = false;
+let _barWatcher = null;
+let _bodyWatcher = null;
+let _hostRef = null;
+let _syncTimer = 0;
 
+// 酒馆助手在没有栏时会自建一个同样 id 的临时栏（class TH--qr--bar），优先用 ST 自己的那条
+function getQrBar() {
+    const bars = Array.from(document.querySelectorAll('#qr--bar'));
+    return bars.find(bar => !bar.classList.contains('TH--qr--bar')) || bars[0] || null;
+}
+
+// ST 的 QR 弹出栏（isPopout=true 时替代 QR 栏，是挂在 body 上的浮动窗口）
+function getQrPopoutBody() {
+    const popout = document.getElementById('qr--popout');
+    return popout ? (popout.querySelector('.qr--body') || popout) : null;
+}
+
+// 当前生效的宿主就是页面上存在的 QR 栏：ST 自己的优先，没有时用酒馆助手自建的临时栏。
+// 弹出栏模式（#qr--popout 替代 QR 栏）下 ST 栏消失，酒馆助手会补一条临时栏，
+// 插件就住在那条临时栏里，按钮仍然可见可点；弹出栏本身保持 ST 原生外观。
+function getQrHost() {
+    return getQrBar();
+}
+
+function isPopoutMode() {
+    return !!getQrPopoutBody();
+}
+
+// 弹出栏里一个按钮都没有时（快捷回复组为空），它既没有内容又会挡住插件按钮行，
+// 短暂等待确认仍然为空后自动退回 QR 栏；有按钮的弹出栏保持 ST 原生行为。
+let _emptyPopoutTimer = 0;
+
+function scheduleEmptyPopoutCheck() {
+    clearTimeout(_emptyPopoutTimer);
+    _emptyPopoutTimer = setTimeout(() => {
+        if (!loadSettings().enabled) return;
+        const popout = document.getElementById('qr--popout');
+        if (!popout) return;
+        const body = popout.querySelector('.qr--body');
+        if (!body) return;
+        if (body.querySelector('.qr--button')) return;
+        const close = popout.querySelector('.qr--close');
+        if (close) close.click();
+    }, 1500);
+}
+
+function scheduleSync() {
+    clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(() => {
+        if (loadSettings().enabled) syncCustomButtons();
+    }, 120);
+}
+
+// QR 栏会被 ST 重建（切 popout、改快捷回复设置），容器要跟着重新挂回栏里
+function watchSendForm() {
+    const sendForm = document.getElementById('send_form');
+    if (!sendForm || _barWatcher) return;
+    _barWatcher = new MutationObserver(() => {
+        if (_isApplying) return;
+        const host = getQrHost();
+        if (!host) return;
+        const container = document.getElementById('qrl-custom-buttons');
+        const hostIsBar = host === getQrBar();
+        if (!container || container.parentElement !== host || (hostIsBar && host.firstElementChild !== container)) {
+            scheduleSync();
+        }
+    });
+    _barWatcher.observe(sendForm, { childList: true });
+
+    // 弹出栏直接挂在 body 上，另开一个只盯 body 直接子节点的观察器
+    if (!_bodyWatcher) {
+        _bodyWatcher = new MutationObserver(() => {
+            if (_isApplying) return;
+            if (isPopoutMode()) scheduleSync();
+        });
+        _bodyWatcher.observe(document.body, { childList: true });
+    }
+}
+
+// 自建容器必须「住进」当前生效的 QR 栏，并占住栏内第一个 .qr--buttons。
+// 酒馆助手脚本和「住进 QR 栏」的脚本都用 bar.querySelector(':scope > .qr--buttons') 当挂载点，
+// 只要我们的容器是它，脚本按钮就会直接落进插件布局里，不再出现互相搬运。
+// 弹出栏模式下 ST 栏消失、酒馆助手会补一条临时栏，容器就跟着临时栏走，按钮保持可见可点。
 function syncCustomButtons() {
     const sendForm = document.getElementById('send_form');
     if (!sendForm) return;
-    
-    let customContainer = document.getElementById('qrl-custom-buttons');
+
+    watchSendForm();
+
+    const qrBar = getQrBar();
+    const host = qrBar;
+
+    // 宿主被重建时（ST 刷新栏、切 popout），旧容器连同已收编的按钮会留在游离子树里。
+    // 直接把旧容器整箱搬进新宿主，避免按钮随旧宿主一起被丢掉。
+    let customContainer = null;
+    if (host && _hostRef && _hostRef !== host) {
+        customContainer = _hostRef.querySelector('#qrl-custom-buttons');
+    }
+    if (!customContainer) customContainer = document.getElementById('qrl-custom-buttons');
     if (!customContainer) {
         customContainer = document.createElement('div');
         customContainer.id = 'qrl-custom-buttons';
         customContainer.className = 'qr--buttons';
         customContainer.dataset.qrlCustom = 'true';
-        sendForm.appendChild(customContainer);
     }
-    
-    const qrBar = document.getElementById('qr--bar');
+    // 重建过程中可能已经生成过一个空容器，清掉避免同 id 两份
+    const strayContainer = document.getElementById('qrl-custom-buttons');
+    if (strayContainer && strayContainer !== customContainer && strayContainer.childElementCount === 0) {
+        strayContainer.remove();
+    }
+
+    if (qrBar && (customContainer.parentElement !== qrBar || qrBar.firstElementChild !== customContainer)) {
+        qrBar.insertBefore(customContainer, qrBar.firstElementChild);
+    }
+    _hostRef = host;
+
     const qrPopout = document.getElementById('qr--popout');
     
     collectNewButtons();
+    if (qrPopout) scheduleEmptyPopoutCheck();
     
     if (_qrObserver) _qrObserver.disconnect();
     _qrObserver = new MutationObserver(() => {
@@ -163,6 +265,7 @@ function syncCustomButtons() {
         _qrObserver._timer = setTimeout(() => {
             if (loadSettings().enabled) {
                 collectNewButtons();
+                scheduleEmptyPopoutCheck();
             }
         }, 300);
     });
@@ -176,7 +279,7 @@ function collectNewButtons() {
     
     _isApplying = true;
     let hasNew = false;
-    const allButtons = document.querySelectorAll('#qr--bar .qr--button, #qr--popout .qr--button');
+    const allButtons = document.querySelectorAll('#qr--bar .qr--button');
     
     allButtons.forEach(btn => {
         if (!btn.closest('#qrl-custom-buttons')) {
@@ -493,10 +596,17 @@ function removeCustomContainer() {
         _qrObserver = null;
     }
     
-    const customContainer = document.getElementById('qrl-custom-buttons');
+    const host = getQrHost();
+    const customContainer = document.getElementById('qrl-custom-buttons') || (_hostRef ? _hostRef.querySelector('#qrl-custom-buttons') : null);
     if (customContainer) {
+        // 关闭插件时把按钮还给当前 QR 界面，避免栏被搬空后一片空白
         customContainer.querySelectorAll('.qr--button').forEach(btn => {
             btn.style.removeProperty('display');
+            btn.style.removeProperty('font-size');
+            btn.style.removeProperty('transform');
+            btn.style.removeProperty('color');
+            btn.style.removeProperty('font-weight');
+            if (host) host.appendChild(btn);
         });
         customContainer.remove();
     }
@@ -504,7 +614,7 @@ function removeCustomContainer() {
     if (_foldButton) { _foldButton.remove(); _foldButton = null; }
     if (_foldPopup) { _foldPopup.remove(); _foldPopup = null; }
     
-    const qrBar = document.getElementById('qr--bar');
+    const qrBar = getQrBar();
     if (qrBar) qrBar.style.removeProperty('display');
     const qrPopout = document.getElementById('qr--popout');
     if (qrPopout) qrPopout.style.removeProperty('display');

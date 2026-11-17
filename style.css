@@ -88,12 +88,24 @@ body.qrl-theme-dark {
     --qrl-fold-blur: var(--SmartThemeBlurStrength, 0px);
 }
 
-body.qrl-active #qr--bar,
-body.qrl-active #qr--popout {
-    display: none !important;
+/* QR 栏必须保持可见：酒馆助手脚本与「住进 QR 栏」的脚本都以它为挂载点 */
+body.qrl-active #qr--bar {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    opacity: 1 !important;
+    overflow: visible !important;
 }
 
-body.qrl-active #send_form #qrl-custom-buttons .qr--button {
+/* 插件接管 QR 栏后，ST 的「全部按钮」弹窗入口仍然保留（弹出栏模式见 syncCustomButtons） */
+body.qrl-active #qr--bar #qrl-custom-buttons .qr--button,
+body.qrl-active #qr--popout #qrl-custom-buttons .qr--button {
     margin: var(--qrl-margin-y) var(--qrl-margin-x) !important;
 }
 
